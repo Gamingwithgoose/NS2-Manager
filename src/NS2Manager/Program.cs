@@ -294,19 +294,23 @@ internal sealed class MainForm : Form
                 // WSL --cd accepts Windows paths on current WSL; no shell interpolation.
                 var probe = new ProcessStartInfo("wsl.exe") { UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardOutput = true, RedirectStandardError = true };
+                const string wslNodeInit = "if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\"; fi; ";
                 probe.ArgumentList.Add("--");
-                probe.ArgumentList.Add("node");
-                probe.ArgumentList.Add("--version");
+                probe.ArgumentList.Add("bash");
+                probe.ArgumentList.Add("-lc");
+                probe.ArgumentList.Add(wslNodeInit + "node --version");
                 using var test = Process.Start(probe) ?? throw new IOException("Could not launch WSL.");
                 var version = (await test.StandardOutput.ReadToEndAsync()).Trim();
                 var errors = (await test.StandardError.ReadToEndAsync()).Trim();
                 await test.WaitForExitAsync();
                 if (test.ExitCode != 0)
-                    throw new IOException("WSL Node.js isn't available. Install Node.js 22+ inside your default WSL distro. " + errors);
+                    throw new IOException("Node.js was not found inside the default WSL Linux distribution (including nvm). This does NOT mean Windows Node is missing. Run 'wsl -l -v' to check which distro is the default, and install/configure Node.js 22+ in that distro. " + errors);
                 var match = Regex.Match(version, @"^v(\d+)\.");
                 if (!match.Success || int.Parse(match.Groups[1].Value) < 22)
                     throw new IOException("WSL Node.js 22+ required, detected: " + version);
-                await StartProcessAsync("wsl.exe", ["--cd", folder, "--", "node", "run.cjs", "--rpc", pc], folder);
+                // Pass the IP as a positional shell argument; never interpolate user input into shell text.
+                await StartProcessAsync("wsl.exe", ["--cd", folder, "--", "bash", "-lc",
+                    wslNodeInit + "exec node run.cjs --rpc \"$1\"", "ns2-manager", pc], folder);
                 WriteLog("WSL Node runner launched using the Windows checkout. Do not start another runner at the same time.");
             }
             else
