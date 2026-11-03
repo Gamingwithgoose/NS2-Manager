@@ -63,6 +63,7 @@ internal sealed class MainForm : Form
     private readonly Button cake = new() { Text = "Start OunceCake", AutoSize = true };
     private readonly Button stop = new() { Text = "Stop host processes", AutoSize = true };
     private readonly Button findRun = new() { Text = "Find latest run", AutoSize = true };
+    private readonly Button backup = new() { Text = "Backup title files…", AutoSize = true };
     private readonly Label status = new() { AutoSize = true, Text = "Idle" };
     private readonly List<Process> processes = [];
     private Settings settings = new();
@@ -109,7 +110,7 @@ internal sealed class MainForm : Form
         titleRow.Controls.AddRange([new Label { Text = "Title ID:", Width = 75, Padding = new Padding(0, 7, 0, 0) }, title,
             new Label { Text = "16 hexadecimal digits; no automatic installed-title discovery yet", AutoSize = true, Padding = new Padding(5, 7, 0, 0) }]);
         var actions = new FlowLayoutPanel { Width = 790, Height = 40 };
-        actions.Controls.AddRange([start, cake, stop, status]);
+        actions.Controls.AddRange([start, cake, backup, stop, status]);
         sessionPanel.Controls.AddRange([runRow, titleRow, actions]); session.Controls.Add(sessionPanel);
         page.Controls.Add(session, 0, 2);
 
@@ -122,6 +123,7 @@ internal sealed class MainForm : Form
         install.Click += async (_, _) => await InstallSelectedAsync();
         start.Click += async (_, _) => await StartHostAsync();
         cake.Click += async (_, _) => await StartCakeAsync();
+        backup.Click += async (_, _) => await BackupAsync();
         stop.Click += (_, _) => StopProcesses();
         findRun.Click += (_, _) => FindLatestRun();
         FormClosing += (_, _) => { SaveSettings(); StopProcesses(); http.Dispose(); };
@@ -253,6 +255,22 @@ internal sealed class MainForm : Form
         catch (Exception ex) { WriteLog("Install failed (existing installation preserved when possible): " + ex.Message); }
         finally { if (stage != null) try { Directory.Delete(stage, true); } catch { } SetBusy(false); }
     }
+    private async Task BackupAsync()
+    {
+        if (busy) return;
+        try
+        {
+            var ip = ValidateIp(console.Text);
+            if (!processes.Any(p => !p.HasExited)) throw new InvalidOperationException("Start the live OunceCake server first.");
+            using var picker = new FolderBrowserDialog { Description = "Choose an EMPTY folder for the extracted title-file backup", UseDescriptionForTitle = true, ShowNewFolderButton = true };
+            if (picker.ShowDialog(this) != DialogResult.OK) return;
+            SetBusy(true);
+            SaveSettings();
+            await new WebDavBackup(ip, 8080, WriteLog).DownloadAsync(picker.SelectedPath, CancellationToken.None);
+        }
+        catch (Exception ex) { WriteLog("Backup stopped: " + ex.Message); }
+        finally { SetBusy(false); }
+    }
     private async Task StartHostAsync()
     {
         try
@@ -293,7 +311,7 @@ internal sealed class MainForm : Form
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         p.OutputDataReceived += (_, e) => { if (e.Data != null) WriteLog(e.Data); };
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) WriteLog("ERR: " + e.Data); };
-        p.Exited += (_, _) => WriteLog($"Process exited (PID {p.Id}, code {p.ExitCode}).");
+        p.Exited += (_, _) => { try { WriteLog($"Process exited (PID {p.Id}, code {p.ExitCode})."); } catch { } };
         if (!p.Start()) throw new IOException("Unable to start process.");
         processes.Add(p);
         p.BeginOutputReadLine(); p.BeginErrorReadLine();
