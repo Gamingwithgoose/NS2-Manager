@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased — initial foundation
+## Unreleased
+- Disable **Stop OunceCake** whenever OunceCake is not running. Enable it on process start and disable it after exit or manual shutdown.
+- Remove development placeholder text from the application title and startup log. Simplify the runner labels to **Windows** and **WSL** while retaining compatibility with saved settings.
+- Rewrite the main README and add a complete build and setup guide under `docs/SETUP.md`.
+
+## Initial development
 - Keep **List games (OunceCake)** disabled until the current ns2jb host prints `4/4 verified` and its result file confirms a listening held RPC session; disable it again when the host exits or stops.
 - Removed the standalone Title ID field, its saved setting, and the displayed Title ID column; per-game selection retains IDs internally.
 - Renamed the independent control to exactly **Stop OunceCake** while preserving the live ns2jb host.
@@ -17,13 +22,11 @@
 - Cancel active backup when stopping host processes.
 - Fixed WSL runner argument forwarding that could cause `Usage: node run.cjs [computer-IP]` before console connection.
 - Removed mandatory Title ID validation for normal OunceCake launch; added a game list captured from OunceCake discovery and an Open selected game button.
-- Title ID remains optional for direct launch.
 - Load nvm-managed Node.js in WSL for dependency preflight and host launch; improve missing Node diagnostics.
 - Added WSL (recommended) runner mode; checks Linux Node.js 22+ and launches the retained RPC host through `wsl.exe` without requiring the user to type commands.
-- Kept Windows-native runner as explicitly experimental after reports of FS acquisition failures.
+- Kept Windows-native runner as available after reports of FS acquisition failures.
 - Added root-level `build.bat` to publish a self-contained Windows x64 EXE into `dist/win-x64/`.
 - Added Windows .NET 8 desktop GUI for host-side ns2jb and OunceCake workflows.
-- Added user-approved GitHub dependency checks, staged updates, version tracking, and rollback copies.
+- Added confirmation-based GitHub dependency checks, staged updates, version tracking, and rollback copies.
 - Added process output capture, independent backend paths, and explicit session lifetime handling.
-- Added experimental integrated HTTP/WebDAV title-file backup, destination picker, path traversal checks, size verification and SHA-256 manifest.
-- Installed-title discovery, resume/cancel, and live device testing remain pending.
+- Added integrated HTTP/WebDAV title-file backup, destination picker, path traversal checks, size verification and SHA-256 manifest.
