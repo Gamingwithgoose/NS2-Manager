@@ -47,3 +47,6 @@ If you see `FS acquisition did not complete`, do **not** immediately retry in th
 
 ### WSL runner exits with Usage: node run.cjs [computer-IP]
 Older NS2-Manager builds incorrectly forwarded the validated host IP through a Bash positional parameter. Pull and rebuild to use the corrected argument path. This error occurs before the console connects. If Windows-native mode already succeeded, continue using that mode and do not restart an exploit session merely to test WSL.
+
+### OunceCake named-pipe ENOENT / backup timeout
+A `\\\\.\\pipe\\ns2-...-memorysock` ENOENT indicates that OunceCake cannot reach its retained session (often a stale run directory or missing host process). A new run directory is **not** sufficient: the ns2jb process must still be alive and RPC must answer `status`. The GUI captures the active run directory from host output and probes RPC before launching OunceCake. The Backup button is only enabled after OunceCake prints `Serving on http://...`. Stop Processes is always visible on a second action row. Do not reuse run folders after closing a host session; avoid restarting an exploit without following upstream console recovery guidance.
