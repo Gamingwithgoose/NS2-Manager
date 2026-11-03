@@ -55,7 +55,7 @@ internal sealed class MainForm : Form
     private readonly TextBox host = new() { Width = 150 };
     private readonly TextBox console = new() { Width = 150 };
     private readonly TextBox run = new() { Width = 525 };
-    private readonly TextBox title = new() { Width = 175, MaxLength = 16 };
+    private readonly TextBox title = new() { Width = 175, MaxLength = 16, ReadOnly = true };
     private readonly ComboBox runnerMode = new() { Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Font = new("Consolas", 9.5f) };
     private readonly ListBox versions = new() { Width = 620, Height = 90 };
@@ -82,6 +82,7 @@ internal sealed class MainForm : Form
     private string? pendingBackupDirectory;
     private string? pendingBackupTitleId;
     private readonly Button stop = new() { Text = "Stop host processes", AutoSize = true };
+    private readonly Button stopCake = new() { Text = "Stop OunceCake only", AutoSize = true };
     private readonly Button findRun = new() { Text = "Find latest run", AutoSize = true };
     private readonly Button backup = new() { Text = "Backup title files…", AutoSize = true, Enabled = false };
     private readonly Button cancelBackup = new() { Text = "Cancel backup", AutoSize = true, Enabled = false };
@@ -132,11 +133,11 @@ internal sealed class MainForm : Form
         runRow.Controls.AddRange([new Label { Text = "Run:", Width = 38, Padding = new Padding(0, 7, 0, 0) }, run, findRun]);
         var titleRow = new FlowLayoutPanel { Width = 790, Height = 36 };
         titleRow.Controls.AddRange([new Label { Text = "Title ID:", Width = 75, Padding = new Padding(0, 7, 0, 0) }, title,
-            new Label { Text = "Optional; leave blank to browse installed games", AutoSize = true, Padding = new Padding(5, 7, 0, 0) }]);
+            new Label { Text = "Mounted / last title (List games always discovers)", AutoSize = true, Padding = new Padding(5, 7, 0, 0) }]);
         var actions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
         actions.Controls.AddRange([start, cake, chooseGame]);
         var transferActions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
-        transferActions.Controls.AddRange([backup, cancelBackup, stop, status]);
+        transferActions.Controls.AddRange([backup, cancelBackup, stopCake, stop, status]);
         games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Game", HeaderText = "Installed game", FillWeight = 44 });
         games.Columns.Add(new DataGridViewTextBoxColumn { Name = "TitleId", HeaderText = "Title ID", FillWeight = 27 });
         games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Storage", HeaderText = "Storage", FillWeight = 17 });
@@ -157,7 +158,15 @@ internal sealed class MainForm : Form
         check.Click += async (_, _) => await CheckUpdatesAsync();
         install.Click += async (_, _) => await InstallSelectedAsync();
         start.Click += async (_, _) => await StartHostAsync();
-        cake.Click += async (_, _) => await StartCakeAsync();
+        cake.Click += async (_, _) =>
+        {
+            if (ounceProcess != null && !ounceProcess.HasExited)
+            {
+                WriteLog("Stopping the current OunceCake mount to rediscover games; ns2jb remains running.");
+                StopOunceCake();
+            }
+            await StartCakeAsync(string.Empty);
+        };
         chooseGame.Click += async (_, _) => await SelectGameAsync();
         games.CellDoubleClick += async (_, e) =>
         {
@@ -167,6 +176,7 @@ internal sealed class MainForm : Form
         backup.Click += async (_, _) => await BackupAsync();
         cancelBackup.Click += (_, _) => backupCancellation?.Cancel();
         stop.Click += (_, _) => StopProcesses();
+        stopCake.Click += (_, _) => StopOunceCake();
         findRun.Click += (_, _) => FindLatestRun();
         FormClosing += (_, _) => { backupCancellation?.Cancel(); SaveSettings(); StopProcesses(); http.Dispose(); };
         WriteLog("This GUI is a host-side prototype. No automatic console writes or update installs.");
@@ -448,7 +458,7 @@ internal sealed class MainForm : Form
         {
             SaveSettings();
             if (ounceProcess != null && !ounceProcess.HasExited)
-                throw new InvalidOperationException("OunceCake is already running. Select a game from the list, or stop the existing process before starting another.");
+                throw new InvalidOperationException("OunceCake is already running. Use Stop OunceCake only or the game list to switch mounts.");
             var folder = deps[1].Root;
             var id = (requestedTitle ?? title.Text).Trim().ToUpperInvariant();
             if (id.Length > 0 && !Regex.IsMatch(id, @"\A[0-9A-F]{16}\z"))
@@ -651,6 +661,32 @@ internal sealed class MainForm : Form
         run.Text = dirs[0];
         WriteLog("Found candidate run: " + dirs[0] + ". OunceCake requires the current manager-started session, not just the newest folder.");
     }
+    private void StopOunceCake()
+    {
+        backupCancellation?.Cancel();
+        ounceReady = false;
+        backup.Enabled = false;
+        chooseGame.Enabled = false;
+        servingUrl = null;
+        servingTitleId = null;
+        pendingBackupDirectory = null;
+        pendingBackupTitleId = null;
+        var p = ounceProcess;
+        ounceProcess = null;
+        if (p == null) { WriteLog("No manager-started OunceCake process is running."); return; }
+        try
+        {
+            if (!p.HasExited)
+            {
+                // Only stops OunceCake, never the retained ns2jb host.
+                p.Kill(entireProcessTree: true);
+                p.WaitForExit(1500);
+            }
+            WriteLog("OunceCake stopped. The verified ns2jb RPC session remains running.");
+        }
+        catch (Exception ex) { WriteLog("Stop OunceCake warning: " + ex.Message); }
+    }
+
     private void StopProcesses()
     {
         backupCancellation?.Cancel();
