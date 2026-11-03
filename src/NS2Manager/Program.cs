@@ -22,7 +22,6 @@ internal sealed class Settings
     public string HostIp { get; set; } = "192.168.1.100";
     public string ConsoleIp { get; set; } = "192.168.1.138";
     public string RunDirectory { get; set; } = "";
-    public string TitleId { get; set; } = "";
     public string RunnerMode { get; set; } = "WSL (recommended)";
 }
 
@@ -55,7 +54,6 @@ internal sealed class MainForm : Form
     private readonly TextBox host = new() { Width = 150 };
     private readonly TextBox console = new() { Width = 150 };
     private readonly TextBox run = new() { Width = 525 };
-    private readonly TextBox title = new() { Width = 175, MaxLength = 16, ReadOnly = true };
     private readonly ComboBox runnerMode = new() { Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Font = new("Consolas", 9.5f) };
     private readonly ListBox versions = new() { Width = 620, Height = 90 };
@@ -82,7 +80,7 @@ internal sealed class MainForm : Form
     private string? pendingBackupDirectory;
     private string? pendingBackupTitleId;
     private readonly Button stop = new() { Text = "Stop host processes", AutoSize = true };
-    private readonly Button stopCake = new() { Text = "Stop OunceCake only", AutoSize = true };
+    private readonly Button stopCake = new() { Text = "Stop OunceCake", AutoSize = true };
     private readonly Button findRun = new() { Text = "Find latest run", AutoSize = true };
     private readonly Button backup = new() { Text = "Backup title files…", AutoSize = true, Enabled = false };
     private readonly Button cancelBackup = new() { Text = "Cancel backup", AutoSize = true, Enabled = false };
@@ -103,7 +101,7 @@ internal sealed class MainForm : Form
         try { settings = JsonSerializer.Deserialize<Settings>(File.ReadAllText(AppPaths.Settings)) ?? new(); }
         catch { /* keep defaults */ }
         host.Text = settings.HostIp; console.Text = settings.ConsoleIp;
-        run.Text = settings.RunDirectory; title.Text = settings.TitleId;
+        run.Text = settings.RunDirectory;
         runnerMode.Items.AddRange(["WSL (recommended)", "Windows (experimental)"]);
         runnerMode.SelectedItem = runnerMode.Items.Contains(settings.RunnerMode) ? settings.RunnerMode : "WSL (recommended)";
 
@@ -127,27 +125,23 @@ internal sealed class MainForm : Form
         depPanel.Controls.Add(versions); depPanel.Controls.Add(depButtons); updates.Controls.Add(depPanel);
         page.Controls.Add(updates, 0, 1);
 
-        var session = new GroupBox { Text = "Exploit host and content server", Height = 390, Dock = DockStyle.Top };
+        var session = new GroupBox { Text = "Exploit host and content server", Height = 350, Dock = DockStyle.Top };
         var sessionPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(8) };
         var runRow = new FlowLayoutPanel { Width = 790, Height = 37 };
         runRow.Controls.AddRange([new Label { Text = "Run:", Width = 38, Padding = new Padding(0, 7, 0, 0) }, run, findRun]);
-        var titleRow = new FlowLayoutPanel { Width = 790, Height = 36 };
-        titleRow.Controls.AddRange([new Label { Text = "Title ID:", Width = 75, Padding = new Padding(0, 7, 0, 0) }, title,
-            new Label { Text = "Mounted / last title (List games always discovers)", AutoSize = true, Padding = new Padding(5, 7, 0, 0) }]);
         var actions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
         actions.Controls.AddRange([start, cake, chooseGame]);
         var transferActions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
         transferActions.Controls.AddRange([backup, cancelBackup, stopCake, stop, status]);
-        games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Game", HeaderText = "Installed game", FillWeight = 44 });
-        games.Columns.Add(new DataGridViewTextBoxColumn { Name = "TitleId", HeaderText = "Title ID", FillWeight = 27 });
-        games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Storage", HeaderText = "Storage", FillWeight = 17 });
+        games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Game", HeaderText = "Installed game", FillWeight = 65 });
+        games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Storage", HeaderText = "Storage", FillWeight = 22 });
         games.Columns.Add(new DataGridViewButtonColumn { Name = "GameBackup", HeaderText = "Action", Text = "Backup", UseColumnTextForButtonValue = true, FillWeight = 13 });
         games.CellContentClick += async (_, e) =>
         {
             if (e.RowIndex >= 0 && e.ColumnIndex == games.Columns["GameBackup"]!.Index)
                 await BackupGameAsync(e.RowIndex);
         };
-        sessionPanel.Controls.AddRange([runRow, titleRow, actions, transferActions, games]); session.Controls.Add(sessionPanel);
+        sessionPanel.Controls.AddRange([runRow, actions, transferActions, games]); session.Controls.Add(sessionPanel);
         page.Controls.Add(session, 0, 2);
 
         var logs = new GroupBox { Text = "Live output", Dock = DockStyle.Fill, Padding = new Padding(8) };
@@ -197,7 +191,7 @@ internal sealed class MainForm : Form
     private void SaveSettings()
     {
         settings.HostIp = host.Text.Trim(); settings.ConsoleIp = console.Text.Trim();
-        settings.RunDirectory = run.Text.Trim(); settings.TitleId = title.Text.Trim(); settings.RunnerMode = runnerMode.SelectedItem?.ToString() ?? "WSL (recommended)";
+        settings.RunDirectory = run.Text.Trim(); settings.RunnerMode = runnerMode.SelectedItem?.ToString() ?? "WSL (recommended)";
         File.WriteAllText(AppPaths.Settings, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
     }
     private static string ValidateIp(string text)
@@ -460,7 +454,7 @@ internal sealed class MainForm : Form
             if (ounceProcess != null && !ounceProcess.HasExited)
                 throw new InvalidOperationException("OunceCake is already running. Use Stop OunceCake only or the game list to switch mounts.");
             var folder = deps[1].Root;
-            var id = (requestedTitle ?? title.Text).Trim().ToUpperInvariant();
+            var id = (requestedTitle ?? string.Empty).Trim().ToUpperInvariant();
             if (id.Length > 0 && !Regex.IsMatch(id, @"\A[0-9A-F]{16}\z"))
                 throw new InvalidOperationException("Optional Title ID must be exactly 16 hexadecimal digits, or blank.");
             if (!File.Exists(Path.Combine(folder, "ouncecake.cjs")))
@@ -596,7 +590,7 @@ internal sealed class MainForm : Form
                 if (IsDisposed) return;
                 if (discoveredGames.Any(x => x.Index == index)) return;
                 discoveredGames.Add((index, name, id));
-                games.Rows.Add(name, id, storage);
+                games.Rows.Add(name, storage);
                 if (games.CurrentRow == null && games.Rows.Count > 0) games.Rows[0].Selected = true;
                 chooseGame.Enabled = ounceProcess != null && !ounceProcess.HasExited;
             });
@@ -620,7 +614,6 @@ internal sealed class MainForm : Form
         {
             await p.StandardInput.WriteLineAsync(game.Index.ToString());
             await p.StandardInput.FlushAsync();
-            title.Text = game.Id;
             servingTitleId = game.Id;
             chooseGame.Enabled = false;
             WriteLog($"Selected {game.Name} [{game.Id}]. Waiting for the WebDAV server ready message.");
