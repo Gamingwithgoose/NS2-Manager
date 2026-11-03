@@ -60,7 +60,7 @@ internal sealed class MainForm : Form
     private readonly Button check = new() { Text = "Check for updates", AutoSize = true };
     private readonly Button install = new() { Text = "Install selected update", AutoSize = true };
     private readonly Button start = new() { Text = "Start ns2jb (RPC)", AutoSize = true };
-    private readonly Button cake = new() { Text = "List games (OunceCake)", AutoSize = true };
+    private readonly Button cake = new() { Text = "List games (OunceCake)", AutoSize = true, Enabled = false };
     private readonly Button chooseGame = new() { Text = "Open selected game", AutoSize = true, Enabled = false };
     private readonly DataGridView games = new()
     {
@@ -75,6 +75,7 @@ internal sealed class MainForm : Form
     private Process? hostProcess;
     private string? activeRunDirectory;
     private bool ounceReady;
+    private bool hostVerified;
     private string? servingTitleId;
     private Uri? servingUrl;
     private string? pendingBackupDirectory;
@@ -182,6 +183,11 @@ internal sealed class MainForm : Form
         if (InvokeRequired) { BeginInvoke(() => WriteLog(s)); return; }
         log.AppendText($"[{DateTime.Now:HH:mm:ss}] {s}{Environment.NewLine}");
     }
+    private void RefreshCakeAvailability()
+    {
+        cake.Enabled = hostVerified && hostProcess != null && !hostProcess.HasExited;
+    }
+
     private void SetBusy(bool value)
     {
         busy = value;
@@ -404,7 +410,9 @@ internal sealed class MainForm : Form
         {
             if (hostProcess != null && !hostProcess.HasExited)
                 throw new InvalidOperationException("A host session is already running. Stop it before starting a new one.");
+            hostVerified = false;
             activeRunDirectory = null;
+            RefreshCakeAvailability();
             ounceReady = false;
             backup.Enabled = false;
             SaveSettings();
@@ -451,6 +459,8 @@ internal sealed class MainForm : Form
         try
         {
             SaveSettings();
+            if (!hostVerified || hostProcess == null || hostProcess.HasExited)
+                throw new InvalidOperationException("Wait until ns2jb reports 4/4 verified before starting OunceCake.");
             if (ounceProcess != null && !ounceProcess.HasExited)
                 throw new InvalidOperationException("OunceCake is already running. Use Stop OunceCake only or the game list to switch mounts.");
             var folder = deps[1].Root;
@@ -631,12 +641,42 @@ internal sealed class MainForm : Form
         {
             if (e.Data == null) return;
             WriteLog(e.Data);
+            if (e.Data.StartsWith("4/4 verified.", StringComparison.Ordinal) && !IsDisposed && IsHandleCreated)
+                try { BeginInvoke(() =>
+                {
+                    if (!ReferenceEquals(hostProcess, p) || p.HasExited) return;
+                    var resultPath = activeRunDirectory == null ? null : Path.Combine(activeRunDirectory, "result.json");
+                    try
+                    {
+                        if (resultPath == null || !File.Exists(resultPath)) throw new IOException("Verified result file is missing.");
+                        using var result = JsonDocument.Parse(File.ReadAllText(resultPath));
+                        if (!result.RootElement.TryGetProperty("verified", out var verified) || verified.ValueKind != JsonValueKind.True ||
+                            !result.RootElement.TryGetProperty("rpc", out var rpc) ||
+                            !rpc.TryGetProperty("state", out var state) || state.GetString() != "listening")
+                            throw new IOException("The host has not confirmed a held RPC session.");
+                        hostVerified = true;
+                        RefreshCakeAvailability();
+                        WriteLog("ns2jb fully established; OunceCake game discovery is now enabled.");
+                    }
+                    catch (Exception ex) { WriteLog("Cannot enable OunceCake yet: " + ex.Message); }
+                }); } catch { }
             var match = Regex.Match(e.Data, @"^Run folder:\s*(.+)$");
             if (match.Success && !IsDisposed && IsHandleCreated)
                 try { BeginInvoke(() => { activeRunDirectory = Path.GetFullPath(match.Groups[1].Value.Trim()); run.Text = activeRunDirectory; WriteLog("Active run folder captured from ns2jb."); }); } catch { }
         };
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) WriteLog("ERR: " + e.Data); };
-        p.Exited += (_, _) => { try { WriteLog($"Process exited (PID {p.Id}, code {p.ExitCode})."); } catch { } };
+        p.Exited += (_, _) =>
+        {
+            try { WriteLog($"Process exited (PID {p.Id}, code {p.ExitCode})."); } catch { }
+            try { if (!IsDisposed && IsHandleCreated) BeginInvoke(() =>
+            {
+                if (!ReferenceEquals(hostProcess, p)) return;
+                hostVerified = false;
+                RefreshCakeAvailability();
+                backup.Enabled = false;
+                WriteLog("ns2jb host exited; OunceCake startup is disabled.");
+            }); } catch { }
+        };
         if (!p.Start()) throw new IOException("Unable to start process.");
         processes.Add(p);
         p.BeginOutputReadLine(); p.BeginErrorReadLine();
@@ -682,6 +722,8 @@ internal sealed class MainForm : Form
 
     private void StopProcesses()
     {
+        hostVerified = false;
+        cake.Enabled = false;
         backupCancellation?.Cancel();
         ounceReady = false;
         backup.Enabled = false;
