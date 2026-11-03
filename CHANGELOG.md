@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased — initial foundation
+- Fixed Stop host processes being clipped by moving actions into two visible rows.
+- Bind OunceCake to the current captured ns2jb run, require verified result and live RPC status instead of treating a previous run folder as active.
+- Keep Backup disabled until OunceCake confirms its HTTP/WebDAV server is serving; disable it when the server exits.
+- Cancel active backup when stopping host processes.
 - Fixed WSL runner argument forwarding that could cause `Usage: node run.cjs [computer-IP]` before console connection.
 - Removed mandatory Title ID validation for normal OunceCake launch; added a game list captured from OunceCake discovery and an Open selected game button.
 - Title ID remains optional for direct launch.
