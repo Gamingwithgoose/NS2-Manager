@@ -131,8 +131,11 @@ internal sealed class WebDavBackup
         }
         if (remote.Size is long expected && count != expected)
             throw new IOException($"Size mismatch for {relative}: got {count}, expected {expected}");
-        await using var hashInput = File.OpenRead(temp);
-        var sha = Convert.ToHexString(await SHA256.HashDataAsync(hashInput, ct)).ToLowerInvariant();
+        string sha;
+        // Close the hash reader before File.Move: Windows won't rename the file
+        // while File.OpenRead holds an open handle (unlike many Linux setups).
+        await using (var hashInput = File.OpenRead(temp))
+            sha = Convert.ToHexString(await SHA256.HashDataAsync(hashInput, ct)).ToLowerInvariant();
         File.Move(temp, localPath);
         entries.Add(new BackupEntry(relative.Replace('\\', '/'), count, sha));
         log($"{entries.Count} files • {downloaded:N0} bytes • {relative}");
