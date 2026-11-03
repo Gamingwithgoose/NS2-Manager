@@ -11,7 +11,7 @@ Windows 10/11, .NET 8 SDK. Run `dotnet run --project src/NS2Manager/NS2Manager.c
 3. In **Session**, choose the host LAN IP address. Click **Start ns2jb (RPC)**. Use your existing SmileBASIC input setup on the console; only the PC terminal is replaced.
 4. A successful retained RPC session produces a run directory inside `ns2jb/runs`. Click **Find latest run**; the manager never reuses a previous run automatically.
 5. Use **Start OunceCake** with a 16-hex-character title ID and the verified run directory. This runs OunceCake's HTTP/WebDAV server for the specific title. A full installed-title browser is planned, not implemented.
-6. Open the read-only content URL in a browser for now. FileZilla is not required. The **Backup selected title** button will be enabled only after a safe, tested directory-index transfer adapter has been implemented.
+6. After OunceCake reports its server ready, click **Backup title files…**, choose a new empty folder and allow the manager to download the WebDAV index recursively. A SHA-256 manifest is written when all files have transferred. This is an experimental host implementation; verify output against your known-good method before relying on it. OunceCake builds without WebDAV PROPFIND support will report an explicit error instead of creating a false backup.
 
 ## Safety
 - All console actions and their risks remain those of upstream ns2jb and OunceCake. No console exploit or save writes are performed by the manager itself.
@@ -33,7 +33,8 @@ Windows 10/11, .NET 8 SDK. Run `dotnet run --project src/NS2Manager/NS2Manager.c
 - [x] Launch/stop native Windows ns2jb and OunceCake scripts
 - [x] Dependency update check, manual installation, rollback staging
 - [ ] Native installed-title discovery and read-only game browser
-- [ ] Integrated recursive download, progress, resumable verification
+- [x] Experimental read-only WebDAV recursive download with per-file SHA-256 manifest
+- [ ] Resumable transfers, cancel control, high-level aggregate progress, transfer integration tests
 - [ ] Automated host and device integration tests
 
 See CHANGELOG.md for changes.
