@@ -299,24 +299,101 @@ internal sealed class MainForm : Form
     }
     private async Task BackupAsync()
     {
-        if (busy) return;
+        if (servingUrl == null || !ounceReady || ounceProcess == null || ounceProcess.HasExited)
+        {
+            WriteLog("No mounted OunceCake game is ready for backup."); return;
+        }
+        using var picker = new FolderBrowserDialog { Description = "Choose an EMPTY folder for the mounted game's extracted files", UseDescriptionForTitle = true, ShowNewFolderButton = true };
+        if (picker.ShowDialog(this) == DialogResult.OK) await BackupToFolderAsync(picker.SelectedPath);
+    }
+
+    private async Task BackupToFolderAsync(string destination)
+    {
+        if (busy) { WriteLog("A transfer or update is already running."); return; }
+        if (servingUrl == null || !ounceReady || ounceProcess == null || ounceProcess.HasExited)
+        {
+            WriteLog("Cannot backup: OunceCake's server is no longer ready."); return;
+        }
+        SetBusy(true);
+        backup.Enabled = false;
+        backupCancellation = new CancellationTokenSource();
+        cancelBackup.Enabled = true;
         try
         {
-            if (servingUrl == null) throw new InvalidOperationException("No OunceCake server address has been reported.");
-            if (!ounceReady || ounceProcess == null || ounceProcess.HasExited)
-                throw new InvalidOperationException("OunceCake has not reported that its WebDAV server is ready. Select a game and wait for the 'Serving on' message first.");
-            using var picker = new FolderBrowserDialog { Description = "Choose an EMPTY folder for the extracted title-file backup", UseDescriptionForTitle = true, ShowNewFolderButton = true };
-            if (picker.ShowDialog(this) != DialogResult.OK) return;
-            SetBusy(true);
-            backupCancellation = new CancellationTokenSource();
-            cancelBackup.Enabled = true;
             SaveSettings();
-            await new WebDavBackup(servingUrl.Host, servingUrl.Port, WriteLog).DownloadAsync(picker.SelectedPath, backupCancellation.Token);
+            // Never substitute the console IP: the WebDAV server advertises its own address.
+            WriteLog("Backing up selected title from " + servingUrl);
+            await new WebDavBackup(servingUrl.Host, servingUrl.Port, WriteLog)
+                .DownloadAsync(destination, backupCancellation.Token);
         }
-        catch (OperationCanceledException) { WriteLog("Backup cancelled; incomplete files may remain with .partial extension. Destination was not marked complete."); }
+        catch (OperationCanceledException) { WriteLog("Backup cancelled; incomplete .partial files may remain."); }
         catch (Exception ex) { WriteLog("Backup stopped: " + ex.Message); }
-        finally { cancelBackup.Enabled = false; backupCancellation?.Dispose(); backupCancellation = null; SetBusy(false); }
+        finally
+        {
+            cancelBackup.Enabled = false;
+            backupCancellation?.Dispose();
+            backupCancellation = null;
+            SetBusy(false);
+            backup.Enabled = ounceReady && ounceProcess != null && !ounceProcess.HasExited;
+        }
     }
+
+    private async Task BackupGameAsync(int rowIndex)
+    {
+        if (busy) { WriteLog("A transfer is already running."); return; }
+        if (rowIndex < 0 || rowIndex >= discoveredGames.Count) return;
+        var game = discoveredGames[rowIndex];
+        using var picker = new FolderBrowserDialog
+        {
+            Description = $"Choose an EMPTY destination folder for {game.Name} [{game.Id}]",
+            UseDescriptionForTitle = true, ShowNewFolderButton = true
+        };
+        if (picker.ShowDialog(this) != DialogResult.OK) return;
+        var destination = picker.SelectedPath;
+        if (Directory.EnumerateFileSystemEntries(destination).Any())
+        {
+            WriteLog("Choose an empty destination folder; no existing files will be overwritten.");
+            return;
+        }
+        if (ounceReady && servingTitleId == game.Id)
+        {
+            await BackupToFolderAsync(destination);
+            return;
+        }
+        if (ounceProcess == null || ounceProcess.HasExited)
+        {
+            WriteLog("OunceCake is not running. Start List games first."); return;
+        }
+        pendingBackupDirectory = destination;
+        pendingBackupTitleId = game.Id;
+        if (!ounceReady && servingTitleId == null)
+        {
+            games.Rows[rowIndex].Selected = true;
+            games.CurrentCell = games.Rows[rowIndex].Cells[0];
+            await SelectGameAsync();
+            return;
+        }
+        // OunceCake serves one title at a time. Restart only it, preserving the host RPC.
+        WriteLog($"Switching OunceCake to {game.Name}; ns2jb stays running.");
+        var previous = ounceProcess;
+        try
+        {
+            if (!previous.HasExited)
+            {
+                previous.Kill(entireProcessTree: true);
+                await previous.WaitForExitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            pendingBackupDirectory = null; pendingBackupTitleId = null;
+            WriteLog("Unable to switch OunceCake: " + ex.Message);
+            return;
+        }
+        await StartCakeAsync(game.Id);
+        servingTitleId = game.Id;
+    }
+
     private async Task StartHostAsync()
     {
         try
@@ -463,6 +540,7 @@ internal sealed class MainForm : Form
             };
             if (!p.Start()) throw new IOException("Unable to start OunceCake.");
             ounceProcess = p;
+            if (id.Length > 0) servingTitleId = id;
             processes.Add(p);
             p.BeginOutputReadLine();
             p.BeginErrorReadLine();
