@@ -67,9 +67,12 @@ internal sealed class MainForm : Form
     private readonly ListBox games = new() { Width = 560, Height = 100, HorizontalScrollbar = true };
     private readonly List<(int Index, string Name, string Id)> discoveredGames = [];
     private Process? ounceProcess;
+    private Process? hostProcess;
+    private string? activeRunDirectory;
+    private bool ounceReady;
     private readonly Button stop = new() { Text = "Stop host processes", AutoSize = true };
     private readonly Button findRun = new() { Text = "Find latest run", AutoSize = true };
-    private readonly Button backup = new() { Text = "Backup title files…", AutoSize = true };
+    private readonly Button backup = new() { Text = "Backup title files…", AutoSize = true, Enabled = false };
     private readonly Button cancelBackup = new() { Text = "Cancel backup", AutoSize = true, Enabled = false };
     private CancellationTokenSource? backupCancellation;
     private readonly Label status = new() { AutoSize = true, Text = "Idle" };
@@ -119,9 +122,11 @@ internal sealed class MainForm : Form
         var titleRow = new FlowLayoutPanel { Width = 790, Height = 36 };
         titleRow.Controls.AddRange([new Label { Text = "Title ID:", Width = 75, Padding = new Padding(0, 7, 0, 0) }, title,
             new Label { Text = "Optional; leave blank to browse installed games", AutoSize = true, Padding = new Padding(5, 7, 0, 0) }]);
-        var actions = new FlowLayoutPanel { Width = 790, Height = 40 };
-        actions.Controls.AddRange([start, cake, chooseGame, backup, cancelBackup, stop, status]);
-        sessionPanel.Controls.AddRange([runRow, titleRow, actions, games]); session.Controls.Add(sessionPanel);
+        var actions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
+        actions.Controls.AddRange([start, cake, chooseGame]);
+        var transferActions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
+        transferActions.Controls.AddRange([backup, cancelBackup, stop, status]);
+        sessionPanel.Controls.AddRange([runRow, titleRow, actions, transferActions, games]); session.Controls.Add(sessionPanel);
         page.Controls.Add(session, 0, 2);
 
         var logs = new GroupBox { Text = "Live output", Dock = DockStyle.Fill, Padding = new Padding(8) };
@@ -274,7 +279,8 @@ internal sealed class MainForm : Form
         try
         {
             var ip = ValidateIp(console.Text);
-            if (!processes.Any(p => !p.HasExited)) throw new InvalidOperationException("Start the live OunceCake server first.");
+            if (!ounceReady || ounceProcess == null || ounceProcess.HasExited)
+                throw new InvalidOperationException("OunceCake has not reported that its WebDAV server is ready. Select a game and wait for the 'Serving on' message first.");
             using var picker = new FolderBrowserDialog { Description = "Choose an EMPTY folder for the extracted title-file backup", UseDescriptionForTitle = true, ShowNewFolderButton = true };
             if (picker.ShowDialog(this) != DialogResult.OK) return;
             SetBusy(true);
@@ -291,6 +297,11 @@ internal sealed class MainForm : Form
     {
         try
         {
+            if (hostProcess != null && !hostProcess.HasExited)
+                throw new InvalidOperationException("A host session is already running. Stop it before starting a new one.");
+            activeRunDirectory = null;
+            ounceReady = false;
+            backup.Enabled = false;
             SaveSettings();
             var pc = ValidateIp(host.Text);
             var folder = deps[0].Root;
@@ -317,13 +328,13 @@ internal sealed class MainForm : Form
                 // pc is strictly validated as IPv4 before being placed in the Bash command.
                 // wsl.exe argument forwarding can discard Bash positional arguments, so pass
                 // the validated IP literally instead of relying on $1.
-                await StartProcessAsync("wsl.exe", ["--cd", folder, "--", "bash", "-lc",
+                hostProcess = await StartProcessAsync("wsl.exe", ["--cd", folder, "--", "bash", "-lc",
                     wslNodeInit + "exec node run.cjs --rpc " + pc], folder);
                 WriteLog("WSL Node runner launched using the Windows checkout. Do not start another runner at the same time.");
             }
             else
             {
-                await StartProcessAsync("node", ["run.cjs", "--rpc", pc], folder);
+                hostProcess = await StartProcessAsync("node", ["run.cjs", "--rpc", pc], folder);
                 WriteLog("WARNING: Windows-native FS acquisition has failed on some consoles. Use WSL mode if this recurs.");
             }
             WriteLog("Continue console-side steps using the matching bootstrap. A launched process does not imply a successful exploit.");
@@ -347,9 +358,42 @@ internal sealed class MainForm : Form
             if (!File.Exists(Path.Combine(dir, "switch2", "current-acquisition.json")) ||
                 !File.Exists(Path.Combine(dir, "switch2", "ro", "root", "current-root.json")))
                 throw new InvalidOperationException("Choose the completed RPC run directory (session metadata missing).");
-            if (!processes.Any(p => !p.HasExited))
-                throw new InvalidOperationException("Start a live ns2jb RPC session in this manager first.");
+            if (hostProcess == null || hostProcess.HasExited)
+                throw new InvalidOperationException("The ns2jb host process is no longer running. Restart the console before starting a new exploit attempt.");
+            if (activeRunDirectory == null ||
+                !string.Equals(Path.GetFullPath(activeRunDirectory), dir, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("This run directory does not match the current manager-launched host session. Do not use a previous run.");
+            var resultPath = Path.Combine(dir, "result.json");
+            if (!File.Exists(resultPath))
+                throw new InvalidOperationException("The selected ns2jb session has not reached verified RPC mode (result.json missing).");
+            using (var result = JsonDocument.Parse(File.ReadAllText(resultPath)))
+            {
+                if (!result.RootElement.TryGetProperty("verified", out var verified) || verified.ValueKind != JsonValueKind.True)
+                    throw new InvalidOperationException("The selected ns2jb session has not verified filesystem access.");
+            }
+            var statusInfo = new ProcessStartInfo("node") { WorkingDirectory = deps[0].Root,
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            statusInfo.ArgumentList.Add("rpc.cjs");
+            statusInfo.ArgumentList.Add(dir);
+            statusInfo.ArgumentList.Add("status");
+            using (var statusProbe = Process.Start(statusInfo) ?? throw new IOException("Cannot run RPC status probe."))
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                try { await statusProbe.WaitForExitAsync(timeout.Token); }
+                catch (OperationCanceledException)
+                {
+                    try { statusProbe.Kill(entireProcessTree: true); } catch { }
+                    throw new IOException("RPC status probe timed out. Session may be stale. Not starting OunceCake.");
+                }
+                var output = await statusProbe.StandardOutput.ReadToEndAsync();
+                var errors = await statusProbe.StandardError.ReadToEndAsync();
+                if (statusProbe.ExitCode != 0)
+                    throw new IOException("The RPC endpoint is unavailable: " + errors.Trim());
+                WriteLog("Live RPC status verified: " + output.Trim().Replace(Environment.NewLine, " "));
+            }
 
+            ounceReady = false;
+            backup.Enabled = false;
             games.Items.Clear();
             discoveredGames.Clear();
             chooseGame.Enabled = false;
@@ -376,7 +420,7 @@ internal sealed class MainForm : Form
             {
                 try { WriteLog($"OunceCake exited (PID {p.Id}, code {p.ExitCode})."); }
                 catch { }
-                try { if (!IsDisposed && IsHandleCreated) BeginInvoke(() => chooseGame.Enabled = false); } catch { }
+                try { if (!IsDisposed && IsHandleCreated) BeginInvoke(() => { chooseGame.Enabled = false; ounceReady = false; backup.Enabled = false; }); } catch { }
             };
             if (!p.Start()) throw new IOException("Unable to start OunceCake.");
             ounceProcess = p;
@@ -393,6 +437,8 @@ internal sealed class MainForm : Form
     private void HandleOunceLine(string line)
     {
         WriteLog(line);
+        if (line.Contains("Serving on http://", StringComparison.OrdinalIgnoreCase) && !IsDisposed && IsHandleCreated)
+            try { BeginInvoke(() => { ounceReady = true; backup.Enabled = true; WriteLog("OunceCake server is ready; Backup title files is enabled."); }); } catch { }
         // OunceCake's gameMenu() prints: 1. Game Name [16-char ID] (Internal, SD)
         var match = Regex.Match(line, @"^\s*(\d+)\.\s+(.+?)\s+\[([0-9A-Fa-f]{16})\]\s+\(([^)]*)\)\s*$");
         if (!match.Success || IsDisposed || !IsHandleCreated) return;
@@ -438,20 +484,27 @@ internal sealed class MainForm : Form
         catch (Exception ex) { WriteLog("Game selection failed: " + ex.Message); }
     }
 
-    private Task StartProcessAsync(string executable, IEnumerable<string> args, string workingDirectory)
+    private Task<Process> StartProcessAsync(string executable, IEnumerable<string> args, string workingDirectory)
     {
         var psi = new ProcessStartInfo(executable) { WorkingDirectory = workingDirectory, UseShellExecute = false,
             RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
         foreach (var arg in args) psi.ArgumentList.Add(arg);
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        p.OutputDataReceived += (_, e) => { if (e.Data != null) WriteLog(e.Data); };
+        p.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data == null) return;
+            WriteLog(e.Data);
+            var match = Regex.Match(e.Data, @"^Run folder:\s*(.+)$");
+            if (match.Success && !IsDisposed && IsHandleCreated)
+                try { BeginInvoke(() => { activeRunDirectory = Path.GetFullPath(match.Groups[1].Value.Trim()); run.Text = activeRunDirectory; WriteLog("Active run folder captured from ns2jb."); }); } catch { }
+        };
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) WriteLog("ERR: " + e.Data); };
         p.Exited += (_, _) => { try { WriteLog($"Process exited (PID {p.Id}, code {p.ExitCode})."); } catch { } };
         if (!p.Start()) throw new IOException("Unable to start process.");
         processes.Add(p);
         p.BeginOutputReadLine(); p.BeginErrorReadLine();
         WriteLog($"Started {Path.GetFileName(executable)} (PID {p.Id}) from {workingDirectory}.");
-        return Task.CompletedTask;
+        return Task.FromResult(p);
     }
     private void FindLatestRun()
     {
@@ -462,10 +515,15 @@ internal sealed class MainForm : Form
             .OrderByDescending(Directory.GetLastWriteTimeUtc).ToArray();
         if (dirs.Length == 0) { WriteLog("No completed acquisition metadata was found."); return; }
         run.Text = dirs[0];
-        WriteLog("Found candidate run: " + dirs[0] + ". Verify that this is the active session before using OunceCake.");
+        WriteLog("Found candidate run: " + dirs[0] + ". OunceCake requires the current manager-started session, not just the newest folder.");
     }
     private void StopProcesses()
     {
+        backupCancellation?.Cancel();
+        ounceReady = false;
+        backup.Enabled = false;
+        chooseGame.Enabled = false;
+        activeRunDirectory = null;
         foreach (var p in processes.ToArray())
         {
             try { if (!p.HasExited) { p.Kill(entireProcessTree: true); p.WaitForExit(1500); } }
@@ -473,6 +531,8 @@ internal sealed class MainForm : Form
             finally { p.Dispose(); }
         }
         processes.Clear();
+        hostProcess = null;
+        ounceProcess = null;
         WriteLog("Stopped manager-launched processes. This does not restore console state.");
     }
 }
