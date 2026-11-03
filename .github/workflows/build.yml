@@ -1,0 +1,20 @@
+name: Windows build
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore and compile
+        run: dotnet build src/NS2Manager/NS2Manager.csproj --configuration Release
+      - name: Publish standalone exe
+        run: dotnet publish src/NS2Manager/NS2Manager.csproj --configuration Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NS2Manager-win-x64
+          path: out/
