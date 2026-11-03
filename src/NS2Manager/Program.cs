@@ -23,6 +23,7 @@ internal sealed class Settings
     public string ConsoleIp { get; set; } = "192.168.1.138";
     public string RunDirectory { get; set; } = "";
     public string TitleId { get; set; } = "";
+    public string RunnerMode { get; set; } = "WSL (recommended)";
 }
 
 internal sealed class Dependency
@@ -55,6 +56,7 @@ internal sealed class MainForm : Form
     private readonly TextBox console = new() { Width = 150 };
     private readonly TextBox run = new() { Width = 525 };
     private readonly TextBox title = new() { Width = 175, MaxLength = 16 };
+    private readonly ComboBox runnerMode = new() { Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Font = new("Consolas", 9.5f) };
     private readonly ListBox versions = new() { Width = 620, Height = 90 };
     private readonly Button check = new() { Text = "Check for updates", AutoSize = true };
@@ -83,6 +85,8 @@ internal sealed class MainForm : Form
         catch { /* keep defaults */ }
         host.Text = settings.HostIp; console.Text = settings.ConsoleIp;
         run.Text = settings.RunDirectory; title.Text = settings.TitleId;
+        runnerMode.Items.AddRange(["WSL (recommended)", "Windows (experimental)"]);
+        runnerMode.SelectedItem = runnerMode.Items.Contains(settings.RunnerMode) ? settings.RunnerMode : "WSL (recommended)";
 
         var page = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1, Padding = new Padding(12), AutoScroll = true };
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -94,7 +98,7 @@ internal sealed class MainForm : Form
         var network = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 45, WrapContents = true };
         network.Controls.AddRange([new Label { Text = "PC LAN IP:", AutoSize = true, Padding = new Padding(0, 7, 0, 0) }, host,
             new Label { Text = "Switch 2 IP:", AutoSize = true, Padding = new Padding(8, 7, 0, 0) }, console,
-            new Label { Text = "Node.js 22+ required", AutoSize = true, Padding = new Padding(10, 7, 0, 0) }]);
+            new Label { Text = "Runner:", AutoSize = true, Padding = new Padding(10, 7, 0, 0) }, runnerMode]);
         page.Controls.Add(network, 0, 0);
 
         var updates = new GroupBox { Text = "Dependencies / Updates (manual approval only)", Height = 170, Dock = DockStyle.Top };
@@ -148,7 +152,7 @@ internal sealed class MainForm : Form
     private void SaveSettings()
     {
         settings.HostIp = host.Text.Trim(); settings.ConsoleIp = console.Text.Trim();
-        settings.RunDirectory = run.Text.Trim(); settings.TitleId = title.Text.Trim();
+        settings.RunDirectory = run.Text.Trim(); settings.TitleId = title.Text.Trim(); settings.RunnerMode = runnerMode.SelectedItem?.ToString() ?? "WSL (recommended)";
         File.WriteAllText(AppPaths.Settings, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
     }
     private static string ValidateIp(string text)
@@ -285,8 +289,32 @@ internal sealed class MainForm : Form
             var pc = ValidateIp(host.Text);
             var folder = deps[0].Root;
             if (!File.Exists(Path.Combine(folder, "run.cjs"))) throw new FileNotFoundException("Install ns2jb under Dependencies first.");
-            await StartProcessAsync("node", ["run.cjs", "--rpc", pc], folder);
-            WriteLog("Runner launched. Continue console-side steps using the matching bootstrap. A launched process does not imply a successful exploit.");
+            if (runnerMode.SelectedItem?.ToString() == "WSL (recommended)")
+            {
+                // WSL --cd accepts Windows paths on current WSL; no shell interpolation.
+                var probe = new ProcessStartInfo("wsl.exe") { UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true };
+                probe.ArgumentList.Add("--");
+                probe.ArgumentList.Add("node");
+                probe.ArgumentList.Add("--version");
+                using var test = Process.Start(probe) ?? throw new IOException("Could not launch WSL.");
+                var version = (await test.StandardOutput.ReadToEndAsync()).Trim();
+                var errors = (await test.StandardError.ReadToEndAsync()).Trim();
+                await test.WaitForExitAsync();
+                if (test.ExitCode != 0)
+                    throw new IOException("WSL Node.js isn't available. Install Node.js 22+ inside your default WSL distro. " + errors);
+                var match = Regex.Match(version, @"^v(\d+)\.");
+                if (!match.Success || int.Parse(match.Groups[1].Value) < 22)
+                    throw new IOException("WSL Node.js 22+ required, detected: " + version);
+                await StartProcessAsync("wsl.exe", ["--cd", folder, "--", "node", "run.cjs", "--rpc", pc], folder);
+                WriteLog("WSL Node runner launched using the Windows checkout. Do not start another runner at the same time.");
+            }
+            else
+            {
+                await StartProcessAsync("node", ["run.cjs", "--rpc", pc], folder);
+                WriteLog("WARNING: Windows-native FS acquisition has failed on some consoles. Use WSL mode if this recurs.");
+            }
+            WriteLog("Continue console-side steps using the matching bootstrap. A launched process does not imply a successful exploit.");
         }
         catch (Exception ex) { WriteLog("Cannot start ns2jb: " + ex.Message); }
     }
