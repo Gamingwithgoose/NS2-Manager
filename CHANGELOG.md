@@ -2,7 +2,7 @@
 
 ## Unreleased
 - Disable **Stop OunceCake** whenever OunceCake is not running. Enable it on process start and disable it after exit or manual shutdown.
-- Remove development placeholder text from the application title and startup log. Simplify the runner labels to **Windows** and **WSL** while retaining compatibility with saved settings.
+- Update the application title and startup message for normal operation. Simplify the runner labels to **Windows** and **WSL** while retaining compatibility with saved settings.
 - Rewrite the main README and add a complete build and setup guide under `docs/SETUP.md`.
 
 ## Initial development
