@@ -10,7 +10,7 @@ Windows 10/11, .NET 8 SDK. Alternatively, run `dotnet run --project src/NS2Manag
 ## First-run workflow
 1. Open **Dependencies**, click **Check for Updates**, then **Install selected**. Review the sources and the exact commit IDs before installing. Nothing updates automatically.
 2. Install Node.js 22+ separately. The manager checks for Node and does not silently install it.
-3. In **Session**, choose the host LAN IP address. Click **Start ns2jb (RPC)**. Use your existing SmileBASIC input setup on the console; only the PC terminal is replaced.
+3. In **Session**, choose **WSL (recommended)** and your host LAN IP address. You must have WSL installed, with Node.js 22+ available inside the *default Linux distribution* (not just Windows). Click **Start ns2jb (RPC)**. The GUI launches `wsl.exe --cd <checkout> -- node run.cjs --rpc <PC-IP>` using the installed source tree. **Windows (experimental)** remains selectable, but may fail at FS acquisition. Use your existing SmileBASIC input setup on the console; only the PC terminal is replaced.
 4. A successful retained RPC session produces a run directory inside `ns2jb/runs`. Click **Find latest run**; the manager never reuses a previous run automatically.
 5. Use **Start OunceCake** with a 16-hex-character title ID and the verified run directory. This runs OunceCake's HTTP/WebDAV server for the specific title. A full installed-title browser is planned, not implemented.
 6. After OunceCake reports its server ready, click **Backup title files…**, choose a new empty folder and allow the manager to download the WebDAV index recursively. A SHA-256 manifest is written when all files have transferred. This is an experimental host implementation; verify output against your known-good method before relying on it. OunceCake builds without WebDAV PROPFIND support will report an explicit error instead of creating a false backup.
@@ -40,3 +40,7 @@ Windows 10/11, .NET 8 SDK. Alternatively, run `dotnet run --project src/NS2Manag
 - [ ] Automated host and device integration tests
 
 See CHANGELOG.md for changes.
+
+
+### FS acquisition failure on Windows
+If you see `FS acquisition did not complete`, do **not** immediately retry in the same console session. Inspect `switch2/acquisition.log` under the indicated run folder, close the stale host runner, restart the console as instructed upstream, then choose WSL mode. This GUI changes the host process, not the firmware-dependent exploit behavior. WSL shares the same Windows checkout through `/mnt/c`; verify compatibility with your known-good WSL setup before console testing.
