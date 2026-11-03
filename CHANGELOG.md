@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased — initial foundation
+- Added WSL (recommended) runner mode; checks Linux Node.js 22+ and launches the retained RPC host through `wsl.exe` without requiring the user to type commands.
+- Kept Windows-native runner as explicitly experimental after reports of FS acquisition failures.
 - Added root-level `build.bat` to publish a self-contained Windows x64 EXE into `dist/win-x64/`.
 - Added Windows .NET 8 desktop GUI for host-side ns2jb and OunceCake workflows.
 - Added user-approved GitHub dependency checks, staged updates, version tracking, and rollback copies.
