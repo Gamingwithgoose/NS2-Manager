@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased — initial foundation
+- Fix Windows WebDAV backup file lock: dispose SHA-256 read stream before renaming `.partial` to the completed file.
+- Make List games always request OunceCake discovery, ignoring previously stored title ID; allow rediscovery while OunceCake is mounted by restarting only OunceCake.
+- Add a dedicated Stop OunceCake only control that preserves the verified ns2jb RPC host.
 - Fix WebDAV backup destination: use OunceCake's actual `Serving on http://IP:PORT/` endpoint instead of the separately configured Switch IP.
 - Replace cramped game list with an installed-title table (name, title ID, storage, Backup action per row).
 - A game's Backup action mounts/selects that title, starts or switches only OunceCake when needed, and then downloads read-only WebDAV files to the chosen empty directory.
