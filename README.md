@@ -80,4 +80,10 @@ The dependency source repositories are maintained separately. Their respective l
 - [OunceCake (ariankordi)](https://github.com/ariankordi/OunceCake)
 - [Original ns2jb project](https://gitlab.com/kurumuz/ns2jb)
 
+## License
+
+NS2 Manager is licensed under the [GNU General Public License, version 2](LICENSE.md). You can use, modify, and redistribute it under GPL v2, including your own forks and integrations. Distributed copies and modified versions must preserve applicable copyright notices and comply with GPL v2's source-code requirements. GPL v2 permits charging for distribution, but recipients keep the right to share copies freely.
+
+See [NOTICE.md](NOTICE.md) for the original project credit and separate third-party attributions.
+
 See [CHANGELOG.md](CHANGELOG.md) for application changes.
