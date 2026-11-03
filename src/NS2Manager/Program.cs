@@ -64,6 +64,8 @@ internal sealed class MainForm : Form
     private readonly Button stop = new() { Text = "Stop host processes", AutoSize = true };
     private readonly Button findRun = new() { Text = "Find latest run", AutoSize = true };
     private readonly Button backup = new() { Text = "Backup title files…", AutoSize = true };
+    private readonly Button cancelBackup = new() { Text = "Cancel backup", AutoSize = true, Enabled = false };
+    private CancellationTokenSource? backupCancellation;
     private readonly Label status = new() { AutoSize = true, Text = "Idle" };
     private readonly List<Process> processes = [];
     private Settings settings = new();
@@ -110,7 +112,7 @@ internal sealed class MainForm : Form
         titleRow.Controls.AddRange([new Label { Text = "Title ID:", Width = 75, Padding = new Padding(0, 7, 0, 0) }, title,
             new Label { Text = "16 hexadecimal digits; no automatic installed-title discovery yet", AutoSize = true, Padding = new Padding(5, 7, 0, 0) }]);
         var actions = new FlowLayoutPanel { Width = 790, Height = 40 };
-        actions.Controls.AddRange([start, cake, backup, stop, status]);
+        actions.Controls.AddRange([start, cake, backup, cancelBackup, stop, status]);
         sessionPanel.Controls.AddRange([runRow, titleRow, actions]); session.Controls.Add(sessionPanel);
         page.Controls.Add(session, 0, 2);
 
@@ -124,9 +126,10 @@ internal sealed class MainForm : Form
         start.Click += async (_, _) => await StartHostAsync();
         cake.Click += async (_, _) => await StartCakeAsync();
         backup.Click += async (_, _) => await BackupAsync();
+        cancelBackup.Click += (_, _) => backupCancellation?.Cancel();
         stop.Click += (_, _) => StopProcesses();
         findRun.Click += (_, _) => FindLatestRun();
-        FormClosing += (_, _) => { SaveSettings(); StopProcesses(); http.Dispose(); };
+        FormClosing += (_, _) => { backupCancellation?.Cancel(); SaveSettings(); StopProcesses(); http.Dispose(); };
         WriteLog("This GUI is a host-side prototype. No automatic console writes or update installs.");
     }
 
@@ -265,11 +268,14 @@ internal sealed class MainForm : Form
             using var picker = new FolderBrowserDialog { Description = "Choose an EMPTY folder for the extracted title-file backup", UseDescriptionForTitle = true, ShowNewFolderButton = true };
             if (picker.ShowDialog(this) != DialogResult.OK) return;
             SetBusy(true);
+            backupCancellation = new CancellationTokenSource();
+            cancelBackup.Enabled = true;
             SaveSettings();
-            await new WebDavBackup(ip, 8080, WriteLog).DownloadAsync(picker.SelectedPath, CancellationToken.None);
+            await new WebDavBackup(ip, 8080, WriteLog).DownloadAsync(picker.SelectedPath, backupCancellation.Token);
         }
+        catch (OperationCanceledException) { WriteLog("Backup cancelled; incomplete files may remain with .partial extension. Destination was not marked complete."); }
         catch (Exception ex) { WriteLog("Backup stopped: " + ex.Message); }
-        finally { SetBusy(false); }
+        finally { cancelBackup.Enabled = false; backupCancellation?.Dispose(); backupCancellation = null; SetBusy(false); }
     }
     private async Task StartHostAsync()
     {
