@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased — initial foundation
+- Fixed WSL runner argument forwarding that could cause `Usage: node run.cjs [computer-IP]` before console connection.
 - Removed mandatory Title ID validation for normal OunceCake launch; added a game list captured from OunceCake discovery and an Open selected game button.
 - Title ID remains optional for direct launch.
 - Load nvm-managed Node.js in WSL for dependency preflight and host launch; improve missing Node diagnostics.
