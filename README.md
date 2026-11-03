@@ -44,3 +44,6 @@ See CHANGELOG.md for changes.
 
 ### FS acquisition failure on Windows
 If you see `FS acquisition did not complete`, do **not** immediately retry in the same console session. Inspect `switch2/acquisition.log` under the indicated run folder, close the stale host runner, restart the console as instructed upstream, then choose WSL mode. This GUI changes the host process, not the firmware-dependent exploit behavior. WSL shares the same Windows checkout through `/mnt/c`; verify compatibility with your known-good WSL setup before console testing.
+
+### WSL runner exits with Usage: node run.cjs [computer-IP]
+Older NS2-Manager builds incorrectly forwarded the validated host IP through a Bash positional parameter. Pull and rebuild to use the corrected argument path. This error occurs before the console connects. If Windows-native mode already succeeded, continue using that mode and do not restart an exploit session merely to test WSL.
