@@ -81,7 +81,7 @@ internal sealed class MainForm : Form
     private string? pendingBackupDirectory;
     private string? pendingBackupTitleId;
     private readonly Button stop = new() { Text = "Stop host processes", AutoSize = true };
-    private readonly Button stopCake = new() { Text = "Stop OunceCake", AutoSize = true };
+    private readonly Button stopCake = new() { Text = "Stop OunceCake", AutoSize = true, Enabled = false };
     private readonly Button findRun = new() { Text = "Find latest run", AutoSize = true };
     private readonly Button backup = new() { Text = "Backup title files…", AutoSize = true, Enabled = false };
     private readonly Button cancelBackup = new() { Text = "Cancel backup", AutoSize = true, Enabled = false };
@@ -93,7 +93,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "NS2 Manager - Windows host prototype";
+        Text = "NS2 Manager";
         ClientSize = new Size(880, 790);
         MinimumSize = new Size(830, 680);
         Font = new Font("Segoe UI", 10);
@@ -103,8 +103,9 @@ internal sealed class MainForm : Form
         catch { /* keep defaults */ }
         host.Text = settings.HostIp; console.Text = settings.ConsoleIp;
         run.Text = settings.RunDirectory;
-        runnerMode.Items.AddRange(["WSL (recommended)", "Windows (experimental)"]);
-        runnerMode.SelectedItem = runnerMode.Items.Contains(settings.RunnerMode) ? settings.RunnerMode : "WSL (recommended)";
+        runnerMode.Items.AddRange(["WSL", "Windows"]);
+        var savedRunner = settings.RunnerMode.StartsWith("WSL", StringComparison.OrdinalIgnoreCase) ? "WSL" : "Windows";
+        runnerMode.SelectedItem = savedRunner;
 
         var page = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1, Padding = new Padding(12), AutoScroll = true };
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -174,7 +175,7 @@ internal sealed class MainForm : Form
         stopCake.Click += (_, _) => StopOunceCake();
         findRun.Click += (_, _) => FindLatestRun();
         FormClosing += (_, _) => { backupCancellation?.Cancel(); SaveSettings(); StopProcesses(); http.Dispose(); };
-        WriteLog("This GUI is a host-side prototype. No automatic console writes or update installs.");
+        WriteLog("Ready. Start ns2jb to establish a session with your Switch 2.");
     }
 
     private void WriteLog(string s)
@@ -188,6 +189,11 @@ internal sealed class MainForm : Form
         cake.Enabled = hostVerified && hostProcess != null && !hostProcess.HasExited;
     }
 
+    private void RefreshOunceCakeStopAvailability()
+    {
+        stopCake.Enabled = ounceProcess != null && !ounceProcess.HasExited;
+    }
+
     private void SetBusy(bool value)
     {
         busy = value;
@@ -197,7 +203,7 @@ internal sealed class MainForm : Form
     private void SaveSettings()
     {
         settings.HostIp = host.Text.Trim(); settings.ConsoleIp = console.Text.Trim();
-        settings.RunDirectory = run.Text.Trim(); settings.RunnerMode = runnerMode.SelectedItem?.ToString() ?? "WSL (recommended)";
+        settings.RunDirectory = run.Text.Trim(); settings.RunnerMode = runnerMode.SelectedItem?.ToString() ?? "WSL";
         File.WriteAllText(AppPaths.Settings, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
     }
     private static string ValidateIp(string text)
@@ -237,7 +243,7 @@ internal sealed class MainForm : Form
         if (processes.Any(p => !p.HasExited)) { MessageBox.Show("Stop running host processes before updating."); return; }
         if (string.IsNullOrWhiteSpace(d.LatestSha)) { MessageBox.Show("Check for updates first."); return; }
         if (d.LatestSha == d.InstalledSha) { WriteLog($"{d.Name} is already at the selected revision."); return; }
-        var confirmation = MessageBox.Show($"Install {d.Owner}/{d.Repo} at commit {d.LatestSha}?\n\nUpstream code is experimental. Review its changes before running. Previous installation will be backed up.",
+        var confirmation = MessageBox.Show($"Install {d.Owner}/{d.Repo} at commit {d.LatestSha}?\n\nReview the upstream changes before installing. The current installation will be retained for rollback.",
             "Approve dependency update", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
         if (confirmation != DialogResult.Yes) return;
         SetBusy(true);
@@ -419,7 +425,7 @@ internal sealed class MainForm : Form
             var pc = ValidateIp(host.Text);
             var folder = deps[0].Root;
             if (!File.Exists(Path.Combine(folder, "run.cjs"))) throw new FileNotFoundException("Install ns2jb under Dependencies first.");
-            if (runnerMode.SelectedItem?.ToString() == "WSL (recommended)")
+            if (runnerMode.SelectedItem?.ToString() == "WSL")
             {
                 // WSL --cd accepts Windows paths on current WSL; no shell interpolation.
                 var probe = new ProcessStartInfo("wsl.exe") { UseShellExecute = false, CreateNoWindow = true,
@@ -448,7 +454,7 @@ internal sealed class MainForm : Form
             else
             {
                 hostProcess = await StartProcessAsync("node", ["run.cjs", "--rpc", pc], folder);
-                WriteLog("WARNING: Windows-native FS acquisition has failed on some consoles. Use WSL mode if this recurs.");
+                WriteLog("If FS acquisition fails, review the acquisition log and restart the console before another attempt.");
             }
             WriteLog("Continue console-side steps using the matching bootstrap. A launched process does not imply a successful exploit.");
         }
@@ -543,6 +549,7 @@ internal sealed class MainForm : Form
                 try { if (!IsDisposed && IsHandleCreated) BeginInvoke(() =>
                 {
                     if (!ReferenceEquals(ounceProcess, p)) return;
+                    RefreshOunceCakeStopAvailability();
                     chooseGame.Enabled = false;
                     ounceReady = false; backup.Enabled = false; servingUrl = null; servingTitleId = null;
                     if (pendingBackupDirectory != null)
@@ -554,6 +561,7 @@ internal sealed class MainForm : Form
             };
             if (!p.Start()) throw new IOException("Unable to start OunceCake.");
             ounceProcess = p;
+            RefreshOunceCakeStopAvailability();
             if (id.Length > 0) servingTitleId = id;
             processes.Add(p);
             p.BeginOutputReadLine();
@@ -706,6 +714,7 @@ internal sealed class MainForm : Form
         pendingBackupTitleId = null;
         var p = ounceProcess;
         ounceProcess = null;
+        RefreshOunceCakeStopAvailability();
         if (p == null) { WriteLog("No manager-started OunceCake process is running."); return; }
         try
         {
@@ -742,6 +751,7 @@ internal sealed class MainForm : Form
         processes.Clear();
         hostProcess = null;
         ounceProcess = null;
+        RefreshOunceCakeStopAvailability();
         WriteLog("Stopped manager-launched processes. This does not restore console state.");
     }
 }
