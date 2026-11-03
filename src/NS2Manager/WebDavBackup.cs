@@ -14,8 +14,7 @@ internal sealed class WebDavBackup
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
     private readonly List<BackupEntry> entries = [];
     private long downloaded;
-    private long? totalBytes;
-    private const int MaxFiles = 500_000;
+        private const int MaxFiles = 500_000;
 
     private sealed record RemoteEntry(Uri Uri, bool Directory, long? Size);
     private sealed record BackupEntry(string Path, long Bytes, string Sha256);
@@ -132,7 +131,8 @@ internal sealed class WebDavBackup
         }
         if (remote.Size is long expected && count != expected)
             throw new IOException($"Size mismatch for {relative}: got {count}, expected {expected}");
-        var sha = Convert.ToHexString(await SHA256.HashDataAsync(File.OpenRead(temp), ct)).ToLowerInvariant();
+        await using var hashInput = File.OpenRead(temp);
+        var sha = Convert.ToHexString(await SHA256.HashDataAsync(hashInput, ct)).ToLowerInvariant();
         File.Move(temp, localPath);
         entries.Add(new BackupEntry(relative.Replace('\\', '/'), count, sha));
         log($"{entries.Count} files • {downloaded:N0} bytes • {relative}");
