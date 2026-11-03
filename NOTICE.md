@@ -1,17 +1,21 @@
-# Attribution and copyright notices
+# Copyright and attribution
 
-Required Notice: Copyright (c) 2026 Gamingwithgoose. NS2 Manager. https://github.com/Gamingwithgoose/NS2-Manager
-Required Notice: NS2 Manager was originally published at https://github.com/Gamingwithgoose/NS2-Manager. Retain this credit in redistributed copies and modified versions.
+Copyright (c) 2026 Gamingwithgoose
 
-NS2 Manager's own source code is made available under the PolyForm Noncommercial License 1.0.0. The license terms and the Required Notice lines above must accompany copies, including modified versions.
+NS2 Manager was originally published by Gamingwithgoose:
+https://github.com/Gamingwithgoose/NS2-Manager
 
-## External projects
+NS2 Manager's original source code is licensed under the GNU General Public License, version 2 (GPL-2.0-only). See [LICENSE.md](LICENSE.md) for the full terms.
 
-NS2 Manager launches and downloads the following projects as separate dependencies. Their authors retain their own copyrights and licensing terms. The NS2 Manager license does not replace or restrict their licenses.
+When redistributing NS2 Manager or a modified version, preserve applicable copyright and license notices, identify your changes as required by GPL v2, and comply with the corresponding source-code distribution requirements. The repository URL above identifies the original project.
 
-- ns2jb (Cellenseres): https://github.com/Cellenseres/ns2jb
-- Original ns2jb project (kurumuz): https://gitlab.com/kurumuz/ns2jb
-- OunceCake (ariankordi): https://github.com/ariankordi/OunceCake — GNU General Public License, version 2
-- OunceCake fork (Cellenseres): https://github.com/Cellenseres/OunceCake — GNU General Public License, version 2
+## Third-party projects
 
-Check each dependency's repository for its full license and attribution requirements before redistributing it. NS2 Manager's dependency downloader does not grant any new rights over that software.
+NS2 Manager downloads and launches the following separate projects. They retain their own copyrights and license terms; this notice does not change or relicense their code.
+
+- ns2jb by Cellenseres: https://github.com/Cellenseres/ns2jb
+- Original ns2jb project by kurumuz: https://gitlab.com/kurumuz/ns2jb
+- OunceCake by ariankordi, GPL v2: https://github.com/ariankordi/OunceCake
+- OunceCake fork by Cellenseres, GPL v2: https://github.com/Cellenseres/OunceCake
+
+Review the upstream terms before redistributing bundled or modified dependencies.
