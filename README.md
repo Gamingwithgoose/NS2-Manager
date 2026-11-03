@@ -13,7 +13,7 @@ Windows 10/11, .NET 8 SDK. Alternatively, run `dotnet run --project src/NS2Manag
 3. In **Session**, choose **WSL (recommended)** and your host LAN IP address. You must have WSL installed, with Node.js 22+ available inside the *default Linux distribution* (not just Windows). The manager now initializes a conventional `~/.nvm/nvm.sh` install before checking or launching Node; an installation in a non-default WSL distribution still requires selecting that distribution as the WSL default. Click **Start ns2jb (RPC)**. The GUI launches `wsl.exe --cd <checkout> -- node run.cjs --rpc <PC-IP>` using the installed source tree. **Windows (experimental)** remains selectable, but may fail at FS acquisition. Use your existing SmileBASIC input setup on the console; only the PC terminal is replaced.
 4. A successful retained RPC session produces a run directory inside `ns2jb/runs`. Click **Find latest run**; the manager never reuses a previous run automatically.
 5. Click **Find latest run** and verify the run is the active held session. Leave the optional Title ID blank, click **List games (OunceCake)** and select from the discovered titles in the GUI. Click **Open selected game** to start the read-only HTTP/WebDAV server. Alternatively enter a 16-character title ID to skip discovery.
-6. After OunceCake reports its server ready, click **Backup title files…**, choose a new empty folder and allow the manager to download the WebDAV index recursively. A SHA-256 manifest is written when all files have transferred. This is an experimental host implementation; verify output against your known-good method before relying on it. OunceCake builds without WebDAV PROPFIND support will report an explicit error instead of creating a false backup.
+6. The installed-game table has a **Backup** button per row. Click that game's Backup button and choose an empty destination folder; the manager selects/mounts the title, waits for OunceCake to serve it, then downloads its read-only WebDAV files. Backups use the exact IP and port printed in OunceCake's `Serving on` message, not the manually configured Switch IP. The general **Backup title files…** button still downloads whichever game is currently mounted. A SHA-256 manifest is written when all files have transferred. This is an experimental host implementation; verify output against your known-good method before relying on it. OunceCake builds without WebDAV PROPFIND support will report an explicit error instead of creating a false backup.
 
 ## Safety
 - All console actions and their risks remain those of upstream ns2jb and OunceCake. No console exploit or save writes are performed by the manager itself.
@@ -34,7 +34,7 @@ Windows 10/11, .NET 8 SDK. Alternatively, run `dotnet run --project src/NS2Manag
 - [x] Native Windows GUI, persistent preferences, Node check, output logs
 - [x] Launch/stop native Windows ns2jb and OunceCake scripts
 - [x] Dependency update check, manual installation, rollback staging
-- [x] OunceCake installed-title discovery and GUI selection (requires live session; verified host integration remains pending)
+- [x] OunceCake installed-title discovery, mounted-game selection and per-game Backup action (live device integration still requires validation)
 - [x] Experimental read-only WebDAV recursive download with per-file SHA-256 manifest
 - [ ] Resumable transfers, cancel control, high-level aggregate progress, transfer integration tests
 - [ ] Automated host and device integration tests
