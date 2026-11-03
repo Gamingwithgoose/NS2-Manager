@@ -64,12 +64,23 @@ internal sealed class MainForm : Form
     private readonly Button start = new() { Text = "Start ns2jb (RPC)", AutoSize = true };
     private readonly Button cake = new() { Text = "List games (OunceCake)", AutoSize = true };
     private readonly Button chooseGame = new() { Text = "Open selected game", AutoSize = true, Enabled = false };
-    private readonly ListBox games = new() { Width = 560, Height = 100, HorizontalScrollbar = true };
+    private readonly DataGridView games = new()
+    {
+        Width = 775, Height = 174, ReadOnly = true, AllowUserToAddRows = false,
+        AllowUserToDeleteRows = false, AllowUserToResizeRows = false,
+        MultiSelect = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+        RowHeadersVisible = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+        BackgroundColor = SystemColors.Window, BorderStyle = BorderStyle.FixedSingle
+    };
     private readonly List<(int Index, string Name, string Id)> discoveredGames = [];
     private Process? ounceProcess;
     private Process? hostProcess;
     private string? activeRunDirectory;
     private bool ounceReady;
+    private string? servingTitleId;
+    private Uri? servingUrl;
+    private string? pendingBackupDirectory;
+    private string? pendingBackupTitleId;
     private readonly Button stop = new() { Text = "Stop host processes", AutoSize = true };
     private readonly Button findRun = new() { Text = "Find latest run", AutoSize = true };
     private readonly Button backup = new() { Text = "Backup title files…", AutoSize = true, Enabled = false };
@@ -83,8 +94,8 @@ internal sealed class MainForm : Form
     public MainForm()
     {
         Text = "NS2 Manager - Windows host prototype";
-        ClientSize = new Size(850, 680);
-        MinimumSize = new Size(730, 560);
+        ClientSize = new Size(880, 790);
+        MinimumSize = new Size(830, 680);
         Font = new Font("Segoe UI", 10);
         http.DefaultRequestHeaders.UserAgent.ParseAdd("NS2Manager/0.1 (+https://github.com/Gamingwithgoose/NS2-Manager)");
         Directory.CreateDirectory(AppPaths.Data);
@@ -115,7 +126,7 @@ internal sealed class MainForm : Form
         depPanel.Controls.Add(versions); depPanel.Controls.Add(depButtons); updates.Controls.Add(depPanel);
         page.Controls.Add(updates, 0, 1);
 
-        var session = new GroupBox { Text = "Exploit host and content server", Height = 300, Dock = DockStyle.Top };
+        var session = new GroupBox { Text = "Exploit host and content server", Height = 390, Dock = DockStyle.Top };
         var sessionPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(8) };
         var runRow = new FlowLayoutPanel { Width = 790, Height = 37 };
         runRow.Controls.AddRange([new Label { Text = "Run:", Width = 38, Padding = new Padding(0, 7, 0, 0) }, run, findRun]);
@@ -126,6 +137,15 @@ internal sealed class MainForm : Form
         actions.Controls.AddRange([start, cake, chooseGame]);
         var transferActions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
         transferActions.Controls.AddRange([backup, cancelBackup, stop, status]);
+        games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Game", HeaderText = "Installed game", FillWeight = 44 });
+        games.Columns.Add(new DataGridViewTextBoxColumn { Name = "TitleId", HeaderText = "Title ID", FillWeight = 27 });
+        games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Storage", HeaderText = "Storage", FillWeight = 17 });
+        games.Columns.Add(new DataGridViewButtonColumn { Name = "GameBackup", HeaderText = "Action", Text = "Backup", UseColumnTextForButtonValue = true, FillWeight = 13 });
+        games.CellContentClick += async (_, e) =>
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex == games.Columns["GameBackup"]!.Index)
+                await BackupGameAsync(e.RowIndex);
+        };
         sessionPanel.Controls.AddRange([runRow, titleRow, actions, transferActions, games]); session.Controls.Add(sessionPanel);
         page.Controls.Add(session, 0, 2);
 
@@ -139,7 +159,11 @@ internal sealed class MainForm : Form
         start.Click += async (_, _) => await StartHostAsync();
         cake.Click += async (_, _) => await StartCakeAsync();
         chooseGame.Click += async (_, _) => await SelectGameAsync();
-        games.DoubleClick += async (_, _) => await SelectGameAsync();
+        games.CellDoubleClick += async (_, e) =>
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex != games.Columns["GameBackup"]!.Index)
+                await SelectGameAsync();
+        };
         backup.Click += async (_, _) => await BackupAsync();
         cancelBackup.Click += (_, _) => backupCancellation?.Cancel();
         stop.Click += (_, _) => StopProcesses();
@@ -278,7 +302,7 @@ internal sealed class MainForm : Form
         if (busy) return;
         try
         {
-            var ip = ValidateIp(console.Text);
+            if (servingUrl == null) throw new InvalidOperationException("No OunceCake server address has been reported.");
             if (!ounceReady || ounceProcess == null || ounceProcess.HasExited)
                 throw new InvalidOperationException("OunceCake has not reported that its WebDAV server is ready. Select a game and wait for the 'Serving on' message first.");
             using var picker = new FolderBrowserDialog { Description = "Choose an EMPTY folder for the extracted title-file backup", UseDescriptionForTitle = true, ShowNewFolderButton = true };
@@ -287,7 +311,7 @@ internal sealed class MainForm : Form
             backupCancellation = new CancellationTokenSource();
             cancelBackup.Enabled = true;
             SaveSettings();
-            await new WebDavBackup(ip, 8080, WriteLog).DownloadAsync(picker.SelectedPath, backupCancellation.Token);
+            await new WebDavBackup(servingUrl.Host, servingUrl.Port, WriteLog).DownloadAsync(picker.SelectedPath, backupCancellation.Token);
         }
         catch (OperationCanceledException) { WriteLog("Backup cancelled; incomplete files may remain with .partial extension. Destination was not marked complete."); }
         catch (Exception ex) { WriteLog("Backup stopped: " + ex.Message); }
@@ -341,7 +365,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex) { WriteLog("Cannot start ns2jb: " + ex.Message); }
     }
-    private async Task StartCakeAsync()
+    private async Task StartCakeAsync(string? requestedTitle = null)
     {
         try
         {
@@ -349,7 +373,7 @@ internal sealed class MainForm : Form
             if (ounceProcess != null && !ounceProcess.HasExited)
                 throw new InvalidOperationException("OunceCake is already running. Select a game from the list, or stop the existing process before starting another.");
             var folder = deps[1].Root;
-            var id = title.Text.Trim().ToUpperInvariant();
+            var id = (requestedTitle ?? title.Text).Trim().ToUpperInvariant();
             if (id.Length > 0 && !Regex.IsMatch(id, @"\A[0-9A-F]{16}\z"))
                 throw new InvalidOperationException("Optional Title ID must be exactly 16 hexadecimal digits, or blank.");
             if (!File.Exists(Path.Combine(folder, "ouncecake.cjs")))
@@ -393,9 +417,14 @@ internal sealed class MainForm : Form
             }
 
             ounceReady = false;
+            servingUrl = null;
+            servingTitleId = null;
             backup.Enabled = false;
-            games.Items.Clear();
-            discoveredGames.Clear();
+            if (id.Length == 0)
+            {
+                games.Rows.Clear();
+                discoveredGames.Clear();
+            }
             chooseGame.Enabled = false;
 
             var psi = new ProcessStartInfo("node")
@@ -420,7 +449,17 @@ internal sealed class MainForm : Form
             {
                 try { WriteLog($"OunceCake exited (PID {p.Id}, code {p.ExitCode})."); }
                 catch { }
-                try { if (!IsDisposed && IsHandleCreated) BeginInvoke(() => { chooseGame.Enabled = false; ounceReady = false; backup.Enabled = false; }); } catch { }
+                try { if (!IsDisposed && IsHandleCreated) BeginInvoke(() =>
+                {
+                    if (!ReferenceEquals(ounceProcess, p)) return;
+                    chooseGame.Enabled = false;
+                    ounceReady = false; backup.Enabled = false; servingUrl = null; servingTitleId = null;
+                    if (pendingBackupDirectory != null)
+                    {
+                        WriteLog("OunceCake exited before the queued backup could start.");
+                        pendingBackupDirectory = null; pendingBackupTitleId = null;
+                    }
+                }); } catch { }
             };
             if (!p.Start()) throw new IOException("Unable to start OunceCake.");
             ounceProcess = p;
@@ -437,8 +476,24 @@ internal sealed class MainForm : Form
     private void HandleOunceLine(string line)
     {
         WriteLog(line);
-        if (line.Contains("Serving on http://", StringComparison.OrdinalIgnoreCase) && !IsDisposed && IsHandleCreated)
-            try { BeginInvoke(() => { ounceReady = true; backup.Enabled = true; WriteLog("OunceCake server is ready; Backup title files is enabled."); }); } catch { }
+        var served = Regex.Match(line, @"Serving on (http://[0-9.]+:[0-9]+/)", RegexOptions.IgnoreCase);
+        if (served.Success && !IsDisposed && IsHandleCreated)
+        {
+            var candidate = served.Groups[1].Value;
+            try { BeginInvoke(async () =>
+            {
+                if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri)) return;
+                servingUrl = uri;
+                ounceReady = true;
+                backup.Enabled = !busy;
+                WriteLog("OunceCake server address detected: " + servingUrl);
+                if (pendingBackupDirectory is string destination && pendingBackupTitleId == servingTitleId)
+                {
+                    pendingBackupDirectory = null; pendingBackupTitleId = null;
+                    await BackupToFolderAsync(destination);
+                }
+            }); } catch { }
+        }
         // OunceCake's gameMenu() prints: 1. Game Name [16-char ID] (Internal, SD)
         var match = Regex.Match(line, @"^\s*(\d+)\.\s+(.+?)\s+\[([0-9A-Fa-f]{16})\]\s+\(([^)]*)\)\s*$");
         if (!match.Success || IsDisposed || !IsHandleCreated) return;
@@ -453,8 +508,8 @@ internal sealed class MainForm : Form
                 if (IsDisposed) return;
                 if (discoveredGames.Any(x => x.Index == index)) return;
                 discoveredGames.Add((index, name, id));
-                games.Items.Add($"{index}. {name} [{id}] ({storage})");
-                if (games.SelectedIndex < 0) games.SelectedIndex = 0;
+                games.Rows.Add(name, id, storage);
+                if (games.CurrentRow == null && games.Rows.Count > 0) games.Rows[0].Selected = true;
                 chooseGame.Enabled = ounceProcess != null && !ounceProcess.HasExited;
             });
         }
@@ -463,7 +518,7 @@ internal sealed class MainForm : Form
 
     private async Task SelectGameAsync()
     {
-        if (games.SelectedIndex < 0 || games.SelectedIndex >= discoveredGames.Count)
+        if (games.CurrentRow == null || games.CurrentRow.Index < 0 || games.CurrentRow.Index >= discoveredGames.Count)
         {
             WriteLog("Select a listed game first."); return;
         }
@@ -472,12 +527,13 @@ internal sealed class MainForm : Form
         {
             WriteLog("OunceCake is no longer waiting for selection. Start it again."); return;
         }
-        var game = discoveredGames[games.SelectedIndex];
+        var game = discoveredGames[games.CurrentRow.Index];
         try
         {
             await p.StandardInput.WriteLineAsync(game.Index.ToString());
             await p.StandardInput.FlushAsync();
             title.Text = game.Id;
+            servingTitleId = game.Id;
             chooseGame.Enabled = false;
             WriteLog($"Selected {game.Name} [{game.Id}]. Waiting for the WebDAV server ready message.");
         }
@@ -524,6 +580,10 @@ internal sealed class MainForm : Form
         backup.Enabled = false;
         chooseGame.Enabled = false;
         activeRunDirectory = null;
+        servingUrl = null;
+        servingTitleId = null;
+        pendingBackupDirectory = null;
+        pendingBackupTitleId = null;
         foreach (var p in processes.ToArray())
         {
             try { if (!p.HasExited) { p.Kill(entireProcessTree: true); p.WaitForExit(1500); } }
