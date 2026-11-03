@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased — initial foundation
+- Keep **List games (OunceCake)** disabled until the current ns2jb host prints `4/4 verified` and its result file confirms a listening held RPC session; disable it again when the host exits or stops.
 - Removed the standalone Title ID field, its saved setting, and the displayed Title ID column; per-game selection retains IDs internally.
 - Renamed the independent control to exactly **Stop OunceCake** while preserving the live ns2jb host.
 - Fix Windows WebDAV backup file lock: dispose SHA-256 read stream before renaming `.partial` to the completed file.
