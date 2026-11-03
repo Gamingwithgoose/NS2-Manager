@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased — initial foundation
+- Added root-level `build.bat` to publish a self-contained Windows x64 EXE into `dist/win-x64/`.
 - Added Windows .NET 8 desktop GUI for host-side ns2jb and OunceCake workflows.
 - Added user-approved GitHub dependency checks, staged updates, version tracking, and rollback copies.
 - Added process output capture, independent backend paths, and explicit session lifetime handling.
