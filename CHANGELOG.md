@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased — initial foundation
+- Removed mandatory Title ID validation for normal OunceCake launch; added a game list captured from OunceCake discovery and an Open selected game button.
+- Title ID remains optional for direct launch.
 - Load nvm-managed Node.js in WSL for dependency preflight and host launch; improve missing Node diagnostics.
 - Added WSL (recommended) runner mode; checks Linux Node.js 22+ and launches the retained RPC host through `wsl.exe` without requiring the user to type commands.
 - Kept Windows-native runner as explicitly experimental after reports of FS acquisition failures.
