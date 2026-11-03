@@ -62,7 +62,11 @@ internal sealed class MainForm : Form
     private readonly Button check = new() { Text = "Check for updates", AutoSize = true };
     private readonly Button install = new() { Text = "Install selected update", AutoSize = true };
     private readonly Button start = new() { Text = "Start ns2jb (RPC)", AutoSize = true };
-    private readonly Button cake = new() { Text = "Start OunceCake", AutoSize = true };
+    private readonly Button cake = new() { Text = "List games (OunceCake)", AutoSize = true };
+    private readonly Button chooseGame = new() { Text = "Open selected game", AutoSize = true, Enabled = false };
+    private readonly ListBox games = new() { Width = 560, Height = 100, HorizontalScrollbar = true };
+    private readonly List<(int Index, string Name, string Id)> discoveredGames = [];
+    private Process? ounceProcess;
     private readonly Button stop = new() { Text = "Stop host processes", AutoSize = true };
     private readonly Button findRun = new() { Text = "Find latest run", AutoSize = true };
     private readonly Button backup = new() { Text = "Backup title files…", AutoSize = true };
@@ -108,16 +112,16 @@ internal sealed class MainForm : Form
         depPanel.Controls.Add(versions); depPanel.Controls.Add(depButtons); updates.Controls.Add(depPanel);
         page.Controls.Add(updates, 0, 1);
 
-        var session = new GroupBox { Text = "Exploit host and content server", Height = 183, Dock = DockStyle.Top };
+        var session = new GroupBox { Text = "Exploit host and content server", Height = 300, Dock = DockStyle.Top };
         var sessionPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(8) };
         var runRow = new FlowLayoutPanel { Width = 790, Height = 37 };
         runRow.Controls.AddRange([new Label { Text = "Run:", Width = 38, Padding = new Padding(0, 7, 0, 0) }, run, findRun]);
         var titleRow = new FlowLayoutPanel { Width = 790, Height = 36 };
         titleRow.Controls.AddRange([new Label { Text = "Title ID:", Width = 75, Padding = new Padding(0, 7, 0, 0) }, title,
-            new Label { Text = "16 hexadecimal digits; no automatic installed-title discovery yet", AutoSize = true, Padding = new Padding(5, 7, 0, 0) }]);
+            new Label { Text = "Optional; leave blank to browse installed games", AutoSize = true, Padding = new Padding(5, 7, 0, 0) }]);
         var actions = new FlowLayoutPanel { Width = 790, Height = 40 };
-        actions.Controls.AddRange([start, cake, backup, cancelBackup, stop, status]);
-        sessionPanel.Controls.AddRange([runRow, titleRow, actions]); session.Controls.Add(sessionPanel);
+        actions.Controls.AddRange([start, cake, chooseGame, backup, cancelBackup, stop, status]);
+        sessionPanel.Controls.AddRange([runRow, titleRow, actions, games]); session.Controls.Add(sessionPanel);
         page.Controls.Add(session, 0, 2);
 
         var logs = new GroupBox { Text = "Live output", Dock = DockStyle.Fill, Padding = new Padding(8) };
@@ -129,6 +133,8 @@ internal sealed class MainForm : Form
         install.Click += async (_, _) => await InstallSelectedAsync();
         start.Click += async (_, _) => await StartHostAsync();
         cake.Click += async (_, _) => await StartCakeAsync();
+        chooseGame.Click += async (_, _) => await SelectGameAsync();
+        games.DoubleClick += async (_, _) => await SelectGameAsync();
         backup.Click += async (_, _) => await BackupAsync();
         cancelBackup.Click += (_, _) => backupCancellation?.Cancel();
         stop.Click += (_, _) => StopProcesses();
@@ -327,20 +333,109 @@ internal sealed class MainForm : Form
         try
         {
             SaveSettings();
+            if (ounceProcess != null && !ounceProcess.HasExited)
+                throw new InvalidOperationException("OunceCake is already running. Select a game from the list, or stop the existing process before starting another.");
             var folder = deps[1].Root;
             var id = title.Text.Trim().ToUpperInvariant();
-            if (!Regex.IsMatch(id, @"\A[0-9A-F]{16}\z")) throw new InvalidOperationException("Title ID must be exactly 16 hex digits.");
-            if (!File.Exists(Path.Combine(folder, "ouncecake.cjs"))) throw new FileNotFoundException("Install OunceCake under Dependencies first.");
+            if (id.Length > 0 && !Regex.IsMatch(id, @"\A[0-9A-F]{16}\z"))
+                throw new InvalidOperationException("Optional Title ID must be exactly 16 hexadecimal digits, or blank.");
+            if (!File.Exists(Path.Combine(folder, "ouncecake.cjs")))
+                throw new FileNotFoundException("Install OunceCake under Dependencies first.");
             var dir = Path.GetFullPath(run.Text.Trim());
             if (!File.Exists(Path.Combine(dir, "switch2", "current-acquisition.json")) ||
                 !File.Exists(Path.Combine(dir, "switch2", "ro", "root", "current-root.json")))
-                throw new InvalidOperationException("Choose the current live, completed RPC run directory (missing expected session files).");
-            if (!processes.Any(p => !p.HasExited)) throw new InvalidOperationException("Start a live ns2jb RPC session in this manager first.");
-            await StartProcessAsync("node", ["ouncecake.cjs", dir, id, "--port", "8080"], folder);
-            WriteLog($"OunceCake starting for {id}. Use http://{ValidateIp(console.Text)}:8080/ after server readiness is confirmed in logs.");
+                throw new InvalidOperationException("Choose the completed RPC run directory (session metadata missing).");
+            if (!processes.Any(p => !p.HasExited))
+                throw new InvalidOperationException("Start a live ns2jb RPC session in this manager first.");
+
+            games.Items.Clear();
+            discoveredGames.Clear();
+            chooseGame.Enabled = false;
+
+            var psi = new ProcessStartInfo("node")
+            {
+                WorkingDirectory = folder,
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add("ouncecake.cjs");
+            psi.ArgumentList.Add(dir);
+            if (id.Length > 0) psi.ArgumentList.Add(id);
+            psi.ArgumentList.Add("--port");
+            psi.ArgumentList.Add("8080");
+
+            var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            p.OutputDataReceived += (_, e) => { if (e.Data != null) HandleOunceLine(e.Data); };
+            p.ErrorDataReceived += (_, e) => { if (e.Data != null) WriteLog("OunceCake ERR: " + e.Data); };
+            p.Exited += (_, _) =>
+            {
+                try { WriteLog($"OunceCake exited (PID {p.Id}, code {p.ExitCode})."); }
+                catch { }
+                try { if (!IsDisposed && IsHandleCreated) BeginInvoke(() => chooseGame.Enabled = false); } catch { }
+            };
+            if (!p.Start()) throw new IOException("Unable to start OunceCake.");
+            ounceProcess = p;
+            processes.Add(p);
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+            WriteLog(id.Length == 0 ? "OunceCake discovering installed titles; select one below when listed." :
+                $"OunceCake launching explicit title {id}.");
         }
         catch (Exception ex) { WriteLog("Cannot start OunceCake: " + ex.Message); }
+        await Task.CompletedTask;
     }
+
+    private void HandleOunceLine(string line)
+    {
+        WriteLog(line);
+        // OunceCake's gameMenu() prints: 1. Game Name [16-char ID] (Internal, SD)
+        var match = Regex.Match(line, @"^\s*(\d+)\.\s+(.+?)\s+\[([0-9A-Fa-f]{16})\]\s+\(([^)]*)\)\s*$");
+        if (!match.Success || IsDisposed || !IsHandleCreated) return;
+        var index = int.Parse(match.Groups[1].Value);
+        var name = match.Groups[2].Value.Trim();
+        var id = match.Groups[3].Value.ToUpperInvariant();
+        var storage = match.Groups[4].Value;
+        try
+        {
+            BeginInvoke(() =>
+            {
+                if (IsDisposed) return;
+                if (discoveredGames.Any(x => x.Index == index)) return;
+                discoveredGames.Add((index, name, id));
+                games.Items.Add($"{index}. {name} [{id}] ({storage})");
+                if (games.SelectedIndex < 0) games.SelectedIndex = 0;
+                chooseGame.Enabled = ounceProcess != null && !ounceProcess.HasExited;
+            });
+        }
+        catch { }
+    }
+
+    private async Task SelectGameAsync()
+    {
+        if (games.SelectedIndex < 0 || games.SelectedIndex >= discoveredGames.Count)
+        {
+            WriteLog("Select a listed game first."); return;
+        }
+        var p = ounceProcess;
+        if (p == null || p.HasExited)
+        {
+            WriteLog("OunceCake is no longer waiting for selection. Start it again."); return;
+        }
+        var game = discoveredGames[games.SelectedIndex];
+        try
+        {
+            await p.StandardInput.WriteLineAsync(game.Index.ToString());
+            await p.StandardInput.FlushAsync();
+            title.Text = game.Id;
+            chooseGame.Enabled = false;
+            WriteLog($"Selected {game.Name} [{game.Id}]. Waiting for the WebDAV server ready message.");
+        }
+        catch (Exception ex) { WriteLog("Game selection failed: " + ex.Message); }
+    }
+
     private Task StartProcessAsync(string executable, IEnumerable<string> args, string workingDirectory)
     {
         var psi = new ProcessStartInfo(executable) { WorkingDirectory = workingDirectory, UseShellExecute = false,
