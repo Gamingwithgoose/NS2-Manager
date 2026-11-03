@@ -314,9 +314,11 @@ internal sealed class MainForm : Form
                 var match = Regex.Match(version, @"^v(\d+)\.");
                 if (!match.Success || int.Parse(match.Groups[1].Value) < 22)
                     throw new IOException("WSL Node.js 22+ required, detected: " + version);
-                // Pass the IP as a positional shell argument; never interpolate user input into shell text.
+                // pc is strictly validated as IPv4 before being placed in the Bash command.
+                // wsl.exe argument forwarding can discard Bash positional arguments, so pass
+                // the validated IP literally instead of relying on $1.
                 await StartProcessAsync("wsl.exe", ["--cd", folder, "--", "bash", "-lc",
-                    wslNodeInit + "exec node run.cjs --rpc \"$1\"", "ns2-manager", pc], folder);
+                    wslNodeInit + "exec node run.cjs --rpc " + pc], folder);
                 WriteLog("WSL Node runner launched using the Windows checkout. Do not start another runner at the same time.");
             }
             else
