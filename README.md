@@ -3,7 +3,9 @@
 Windows desktop manager for a **user-controlled** Switch 2 research session. This is an early host-side prototype, not a jailbreak, CFW, or universal game-image dumper.
 
 ## Build
-Windows 10/11, .NET 8 SDK. Run `dotnet run --project src/NS2Manager/NS2Manager.csproj` or publish with `dotnet publish src/NS2Manager/NS2Manager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true`.
+**Easy Windows build:** install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0), then double-click `build.bat` at the repository root. The standalone EXE will be at `dist/win-x64/NS2Manager.exe`. This is a host-side build and does not launch an exploit on its own.
+
+Windows 10/11, .NET 8 SDK. Alternatively, run `dotnet run --project src/NS2Manager/NS2Manager.csproj` or publish with `dotnet publish src/NS2Manager/NS2Manager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true`.
 
 ## First-run workflow
 1. Open **Dependencies**, click **Check for Updates**, then **Install selected**. Review the sources and the exact commit IDs before installing. Nothing updates automatically.
