@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Fix OunceCake launch after adding the Wi-Fi host dependency: locate OunceCake by name instead of the now-obsolete dependency index.
 - Decode redirected ns2jb, Wi-Fi, WSL, RPC, and OunceCake output using UTF-8 so non-ASCII game names display correctly; send OunceCake input as BOM-free UTF-8.
 - Use the supplied Switch 2 icon for the Windows executable and application window.
 - Added **Start ns2jb-WiFi** alongside **Start ns2jb**. Only one backend can start at a time, and both launch buttons remain disabled during an active host session.
