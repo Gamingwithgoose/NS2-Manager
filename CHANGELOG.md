@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Decode redirected ns2jb, Wi-Fi, WSL, RPC, and OunceCake output using UTF-8 so non-ASCII game names display correctly; send OunceCake input as BOM-free UTF-8.
+- Use the supplied Switch 2 icon for the Windows executable and application window.
 - Added **Start ns2jb-WiFi** alongside **Start ns2jb**. Only one backend can start at a time, and both launch buttons remain disabled during an active host session.
 - Added **ns2jb-wifi** as a separate dependency with version lookup and approved ZIP installation from nyathea's GitLab repository.
 - Preserved standard ns2jb installation and updated setup instructions for both backends.
