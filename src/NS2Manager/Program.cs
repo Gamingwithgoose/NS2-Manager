@@ -528,7 +528,8 @@ internal sealed class MainForm : Form
                 throw new InvalidOperationException("Wait until ns2jb reports 4/4 verified before starting OunceCake.");
             if (ounceProcess != null && !ounceProcess.HasExited)
                 throw new InvalidOperationException("OunceCake is already running. Use Stop OunceCake only or the game list to switch mounts.");
-            var folder = deps[1].Root;
+            // Resolve by dependency name so adding another host backend cannot redirect OunceCake.
+            var folder = deps.Single(d => d.Name == "OunceCake").Root;
             var id = (requestedTitle ?? string.Empty).Trim().ToUpperInvariant();
             if (id.Length > 0 && !Regex.IsMatch(id, @"\A[0-9A-F]{16}\z"))
                 throw new InvalidOperationException("Optional Title ID must be exactly 16 hexadecimal digits, or blank.");
