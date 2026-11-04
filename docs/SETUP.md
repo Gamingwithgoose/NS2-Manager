@@ -22,7 +22,7 @@ Run `NS2Manager.exe` after the build completes. The application stores its setti
 
 ## 2. Install the host dependencies
 
-NS2 Manager downloads two separate projects: **ns2jb** runs the host connection and retained RPC session, while **OunceCake** mounts a game and serves its files.
+NS2 Manager manages three dependency entries: **ns2jb** (the standard host), **ns2jb-wifi** (the Wi-Fi fork at [GitLab](https://gitlab.com/nyathea/ns2jb-wifi)), and **OunceCake** (the title browser and file server). The two ns2jb versions are installed in separate directories and have independent update checks.
 
 Install Node.js 22 or newer. For the Windows runner, Node must be available in Windows PATH. For the WSL runner, Node must be available inside the default Linux distribution; a Windows-only Node installation does not satisfy this requirement.
 
@@ -30,7 +30,8 @@ In the application's dependency list:
 
 1. Click **Check for updates**.
 2. Select **ns2jb** and click **Install selected update**. Review the confirmation before proceeding.
-3. Select **OunceCake** and install its update the same way.
+3. Optionally select **ns2jb-wifi** and install it using the same update controls. Its version and download come from GitLab.
+4. Select **OunceCake** and install its update the same way.
 
 Dependencies are stored separately under `%LOCALAPPDATA%\NS2Manager\tools`. An update does not run unless you approve it. Do not update either dependency during an active connection.
 
@@ -38,9 +39,9 @@ Dependencies are stored separately under `%LOCALAPPDATA%\NS2Manager\tools`. An u
 
 Enter your PC's LAN IPv4 address in **PC LAN IP**. This must be the address reachable from the Switch 2, not an unrelated WSL virtual-interface address.
 
-Select **Windows** to run ns2jb with Windows Node.js or **WSL** to run it through the default Linux distribution. The WSL option uses the dependency folder under your Windows profile, not an independent checkout under your Linux home directory.
+Select **Windows** to run ns2jb with Windows Node.js or **WSL** to run it through the default Linux distribution. The WSL option uses the selected dependency folder under your Windows profile, not an independent checkout under your Linux home directory. The Wi-Fi host follows the same Windows/WSL runner choice. OunceCake support with the Wi-Fi fork depends on whether that fork produces the same retained RPC files and endpoint; confirm it on a live connection before relying on it.
 
-Click **Start ns2jb (RPC)**. Wait until the log reports:
+Click **Start ns2jb** to use the standard host, or **Start ns2jb-WiFi** to use the GitLab version. Starting either one disables both start buttons to prevent overlapping sessions. Stop the active host before choosing another. Wait until the log reports:
 
 ```text
 Waiting for Switch 2 at YOUR_PC_IP:39380.
