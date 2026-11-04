@@ -28,7 +28,7 @@ You do not need the .NET runtime installed separately to run the published execu
 
 ## Set up ns2jb and OunceCake
 
-On the first launch, select each dependency in the list, click **Check for updates**, then **Install selected update**. Both downloads are installed under:
+On the first launch, select each dependency in the list, click **Check for updates**, then **Install selected update**. The dependency list includes the standard ns2jb host (GitHub), **ns2jb-wifi** ([GitLab](https://gitlab.com/nyathea/ns2jb-wifi)), and OunceCake. Both host versions are downloaded and updated independently. Both downloads are installed under:
 
 ```text
 %LOCALAPPDATA%\NS2Manager\tools
@@ -40,7 +40,7 @@ Set **PC LAN IP** to the IPv4 address the Switch 2 can reach. Select **Windows**
 
 ## Connect the console
 
-1. Click **Start ns2jb (RPC)**.
+1. Click **Start ns2jb** for the standard host, or **Start ns2jb-WiFi** for the Wi-Fi fork. Once either host begins starting, both start buttons are disabled until that host exits or you stop the session.
 2. Wait for the message `Waiting for Switch 2 at ...:39380`.
 3. Open the saved ns2jb bootstrap in SmileBASIC on the Switch 2.
 4. Enter `RUN`, then `REMOVE NSR,&H60000000,&H3FFFFFFF`. After the expected Out of memory message, enter the `V=START(...)` command shown in the manager log.
@@ -77,6 +77,7 @@ ns2jb performs console-side operations through its bootstrap, including temporar
 The dependency source repositories are maintained separately. Their respective licenses and attribution remain with their authors.
 
 - [ns2jb (Cellenseres)](https://github.com/Cellenseres/ns2jb)
+- [ns2jb-wifi (nyathea)](https://gitlab.com/nyathea/ns2jb-wifi)
 - [OunceCake (ariankordi)](https://github.com/ariankordi/OunceCake)
 - [Original ns2jb project](https://gitlab.com/kurumuz/ns2jb)
 
