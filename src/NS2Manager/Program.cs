@@ -30,6 +30,7 @@ internal sealed class Dependency
     public required string Name { get; init; }
     public required string Owner { get; init; }
     public required string Repo { get; init; }
+    public bool IsGitLab { get; init; }
     public string? InstalledSha { get; set; }
     public string? LatestSha { get; set; }
     public string Root => Path.Combine(AppPaths.Data, "tools", Name);
@@ -49,6 +50,7 @@ internal sealed class MainForm : Form
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(5) };
     private readonly Dependency[] deps = [
         new() { Name = "ns2jb", Owner = "Cellenseres", Repo = "ns2jb" },
+        new() { Name = "ns2jb-wifi", Owner = "nyathea", Repo = "ns2jb-wifi", IsGitLab = true },
         new() { Name = "OunceCake", Owner = "ariankordi", Repo = "OunceCake" }
     ];
     private readonly TextBox host = new() { Width = 150 };
@@ -59,7 +61,8 @@ internal sealed class MainForm : Form
     private readonly ListBox versions = new() { Width = 620, Height = 90 };
     private readonly Button check = new() { Text = "Check for updates", AutoSize = true };
     private readonly Button install = new() { Text = "Install selected update", AutoSize = true };
-    private readonly Button start = new() { Text = "Start ns2jb (RPC)", AutoSize = true };
+    private readonly Button start = new() { Text = "Start ns2jb", AutoSize = true };
+    private readonly Button startWifi = new() { Text = "Start ns2jb-WiFi", AutoSize = true };
     private readonly Button cake = new() { Text = "List games (OunceCake)", AutoSize = true, Enabled = false };
     private readonly Button chooseGame = new() { Text = "Open selected game", AutoSize = true, Enabled = false };
     private readonly DataGridView games = new()
@@ -73,6 +76,8 @@ internal sealed class MainForm : Form
     private readonly List<(int Index, string Name, string Id)> discoveredGames = [];
     private Process? ounceProcess;
     private Process? hostProcess;
+    private Dependency? activeHostDependency;
+    private bool hostStarting;
     private string? activeRunDirectory;
     private bool ounceReady;
     private bool hostVerified;
@@ -132,7 +137,7 @@ internal sealed class MainForm : Form
         var runRow = new FlowLayoutPanel { Width = 790, Height = 37 };
         runRow.Controls.AddRange([new Label { Text = "Run:", Width = 38, Padding = new Padding(0, 7, 0, 0) }, run, findRun]);
         var actions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
-        actions.Controls.AddRange([start, cake, chooseGame]);
+        actions.Controls.AddRange([start, startWifi, cake, chooseGame]);
         var transferActions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
         transferActions.Controls.AddRange([backup, cancelBackup, stopCake, stop, status]);
         games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Game", HeaderText = "Installed game", FillWeight = 65 });
@@ -153,7 +158,8 @@ internal sealed class MainForm : Form
         versions.SelectedIndex = 0;
         check.Click += async (_, _) => await CheckUpdatesAsync();
         install.Click += async (_, _) => await InstallSelectedAsync();
-        start.Click += async (_, _) => await StartHostAsync();
+        start.Click += async (_, _) => await StartHostAsync(deps[0]);
+        startWifi.Click += async (_, _) => await StartHostAsync(deps[1]);
         cake.Click += async (_, _) =>
         {
             if (ounceProcess != null && !ounceProcess.HasExited)
@@ -184,6 +190,13 @@ internal sealed class MainForm : Form
         if (InvokeRequired) { BeginInvoke(() => WriteLog(s)); return; }
         log.AppendText($"[{DateTime.Now:HH:mm:ss}] {s}{Environment.NewLine}");
     }
+    private void RefreshHostButtons()
+    {
+        bool canStart = !hostStarting && (hostProcess == null || hostProcess.HasExited);
+        start.Enabled = canStart;
+        startWifi.Enabled = canStart;
+    }
+
     private void RefreshCakeAvailability()
     {
         cake.Enabled = hostVerified && hostProcess != null && !hostProcess.HasExited;
@@ -410,12 +423,17 @@ internal sealed class MainForm : Form
         servingTitleId = game.Id;
     }
 
-    private async Task StartHostAsync()
+    private async Task StartHostAsync(Dependency backend)
     {
+        if (hostStarting || (hostProcess != null && !hostProcess.HasExited))
+        {
+            WriteLog("A host session is already starting or running. Stop it before switching ns2jb versions.");
+            return;
+        }
+        hostStarting = true;
+        RefreshHostButtons();
         try
         {
-            if (hostProcess != null && !hostProcess.HasExited)
-                throw new InvalidOperationException("A host session is already running. Stop it before starting a new one.");
             hostVerified = false;
             activeRunDirectory = null;
             RefreshCakeAvailability();
@@ -423,8 +441,9 @@ internal sealed class MainForm : Form
             backup.Enabled = false;
             SaveSettings();
             var pc = ValidateIp(host.Text);
-            var folder = deps[0].Root;
-            if (!File.Exists(Path.Combine(folder, "run.cjs"))) throw new FileNotFoundException("Install ns2jb under Dependencies first.");
+            var folder = backend.Root;
+            if (!File.Exists(Path.Combine(folder, "run.cjs"))) throw new FileNotFoundException($"Install {backend.Name} under Dependencies first.");
+            activeHostDependency = backend;
             if (runnerMode.SelectedItem?.ToString() == "WSL")
             {
                 // WSL --cd accepts Windows paths on current WSL; no shell interpolation.
@@ -449,16 +468,25 @@ internal sealed class MainForm : Form
                 // the validated IP literally instead of relying on $1.
                 hostProcess = await StartProcessAsync("wsl.exe", ["--cd", folder, "--", "bash", "-lc",
                     wslNodeInit + "exec node run.cjs --rpc " + pc], folder);
-                WriteLog("WSL Node runner launched using the Windows checkout. Do not start another runner at the same time.");
+                WriteLog($"{backend.Name} started through WSL. The two ns2jb backends cannot run simultaneously.");
             }
             else
             {
                 hostProcess = await StartProcessAsync("node", ["run.cjs", "--rpc", pc], folder);
-                WriteLog("If FS acquisition fails, review the acquisition log and restart the console before another attempt.");
+                WriteLog($"{backend.Name} started using Windows Node. If FS acquisition fails, check the acquisition log before trying again.");
             }
             WriteLog("Continue console-side steps using the matching bootstrap. A launched process does not imply a successful exploit.");
         }
-        catch (Exception ex) { WriteLog("Cannot start ns2jb: " + ex.Message); }
+        catch (Exception ex)
+        {
+            if (hostProcess == null || hostProcess.HasExited) activeHostDependency = null;
+            WriteLog($"Cannot start {backend.Name}: " + ex.Message);
+        }
+        finally
+        {
+            hostStarting = false;
+            RefreshHostButtons();
+        }
     }
     private async Task StartCakeAsync(string? requestedTitle = null)
     {
@@ -492,7 +520,9 @@ internal sealed class MainForm : Form
                 if (!result.RootElement.TryGetProperty("verified", out var verified) || verified.ValueKind != JsonValueKind.True)
                     throw new InvalidOperationException("The selected ns2jb session has not verified filesystem access.");
             }
-            var statusInfo = new ProcessStartInfo("node") { WorkingDirectory = deps[0].Root,
+            var activeHostFolder = activeHostDependency?.Root ??
+                throw new InvalidOperationException("No active ns2jb backend was selected.");
+            var statusInfo = new ProcessStartInfo("node") { WorkingDirectory = activeHostFolder,
                 UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
             statusInfo.ArgumentList.Add("rpc.cjs");
             statusInfo.ArgumentList.Add(dir);
@@ -682,6 +712,7 @@ internal sealed class MainForm : Form
                 hostVerified = false;
                 RefreshCakeAvailability();
                 backup.Enabled = false;
+                RefreshHostButtons();
                 WriteLog("ns2jb host exited; OunceCake startup is disabled.");
             }); } catch { }
         };
@@ -693,7 +724,7 @@ internal sealed class MainForm : Form
     }
     private void FindLatestRun()
     {
-        var root = Path.Combine(deps[0].Root, "runs");
+        var root = Path.Combine(activeHostDependency?.Root ?? deps[0].Root, "runs");
         if (!Directory.Exists(root)) { WriteLog("No runs directory found."); return; }
         var dirs = Directory.GetDirectories(root)
             .Where(d => File.Exists(Path.Combine(d, "switch2", "current-acquisition.json")))
@@ -750,6 +781,9 @@ internal sealed class MainForm : Form
         }
         processes.Clear();
         hostProcess = null;
+        activeHostDependency = null;
+        hostStarting = false;
+        RefreshHostButtons();
         ounceProcess = null;
         RefreshOunceCakeStopAvailability();
         WriteLog("Stopped manager-launched processes. This does not restore console state.");
