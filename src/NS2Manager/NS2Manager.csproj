@@ -7,5 +7,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>NS2Manager</AssemblyName>
     <RootNamespace>NS2Manager</RootNamespace>
+    <ApplicationIcon>assets/app.ico</ApplicationIcon>
   </PropertyGroup>
 </Project>
