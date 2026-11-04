@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace NS2Manager;
@@ -99,6 +100,7 @@ internal sealed class MainForm : Form
     public MainForm()
     {
         Text = "NS2 Manager";
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
         ClientSize = new Size(880, 790);
         MinimumSize = new Size(830, 680);
         Font = new Font("Segoe UI", 10);
@@ -476,7 +478,8 @@ internal sealed class MainForm : Form
             {
                 // WSL --cd accepts Windows paths on current WSL; no shell interpolation.
                 var probe = new ProcessStartInfo("wsl.exe") { UseShellExecute = false, CreateNoWindow = true,
-                    RedirectStandardOutput = true, RedirectStandardError = true };
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
                 const string wslNodeInit = "if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\"; fi; ";
                 probe.ArgumentList.Add("--");
                 probe.ArgumentList.Add("bash");
@@ -551,7 +554,9 @@ internal sealed class MainForm : Form
             var activeHostFolder = activeHostDependency?.Root ??
                 throw new InvalidOperationException("No active ns2jb backend was selected.");
             var statusInfo = new ProcessStartInfo("node") { WorkingDirectory = activeHostFolder,
-                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
+                CreateNoWindow = true };
             statusInfo.ArgumentList.Add("rpc.cjs");
             statusInfo.ArgumentList.Add(dir);
             statusInfo.ArgumentList.Add("status");
@@ -589,6 +594,9 @@ internal sealed class MainForm : Form
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardInputEncoding = Encoding.UTF8,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
                 CreateNoWindow = true
             };
             psi.ArgumentList.Add("ouncecake.cjs");
@@ -700,7 +708,9 @@ internal sealed class MainForm : Form
     private Task<Process> StartProcessAsync(string executable, IEnumerable<string> args, string workingDirectory)
     {
         var psi = new ProcessStartInfo(executable) { WorkingDirectory = workingDirectory, UseShellExecute = false,
-            RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
+            CreateNoWindow = true };
         foreach (var arg in args) psi.ArgumentList.Add(arg);
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         p.OutputDataReceived += (_, e) =>
