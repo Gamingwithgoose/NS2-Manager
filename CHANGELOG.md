@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Added **Start ns2jb-WiFi** alongside **Start ns2jb**. Only one backend can start at a time, and both launch buttons remain disabled during an active host session.
+- Added **ns2jb-wifi** as a separate dependency with version lookup and approved ZIP installation from nyathea's GitLab repository.
+- Preserved standard ns2jb installation and updated setup instructions for both backends.
 - License NS2 Manager under GPL v2 and document the original project copyright and upstream attributions.
 - Disable **Stop OunceCake** whenever OunceCake is not running. Enable it on process start and disable it after exit or manual shutdown.
 - Update the application title and startup message for normal operation. Simplify the runner labels to **Windows** and **WSL** while retaining compatibility with saved settings.
