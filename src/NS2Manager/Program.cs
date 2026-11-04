@@ -239,11 +239,37 @@ internal sealed class MainForm : Form
         {
             foreach (var d in deps)
             {
-                using var response = await http.GetAsync($"https://api.github.com/repos/{d.Owner}/{d.Repo}/commits?per_page=1");
-                response.EnsureSuccessStatusCode();
-                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-                d.LatestSha = document.RootElement[0].GetProperty("sha").GetString();
-                WriteLog($"{d.Name}: installed {d.InstalledSha ?? "none"}, upstream {d.LatestSha}");
+                try
+                {
+                    if (d.IsGitLab)
+                    {
+                        // GitLab project 88311107 is nyathea/ns2jb-wifi.
+                        const string projectApi = "https://gitlab.com/api/v4/projects/88311107";
+                        using var projectResponse = await http.GetAsync(projectApi);
+                        projectResponse.EnsureSuccessStatusCode();
+                        using var project = JsonDocument.Parse(await projectResponse.Content.ReadAsStringAsync());
+                        var branch = project.RootElement.GetProperty("default_branch").GetString();
+                        if (string.IsNullOrWhiteSpace(branch)) throw new IOException("GitLab did not report a default branch.");
+                        using var branchResponse = await http.GetAsync(
+                            projectApi + "/repository/branches/" + Uri.EscapeDataString(branch));
+                        branchResponse.EnsureSuccessStatusCode();
+                        using var branchDoc = JsonDocument.Parse(await branchResponse.Content.ReadAsStringAsync());
+                        d.LatestSha = branchDoc.RootElement.GetProperty("commit").GetProperty("id").GetString();
+                    }
+                    else
+                    {
+                        using var response = await http.GetAsync($"https://api.github.com/repos/{d.Owner}/{d.Repo}/commits?per_page=1");
+                        response.EnsureSuccessStatusCode();
+                        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                        d.LatestSha = document.RootElement[0].GetProperty("sha").GetString();
+                    }
+                    WriteLog($"{d.Name}: installed {d.InstalledSha ?? "none"}, upstream {d.LatestSha}");
+                }
+                catch (Exception ex)
+                {
+                    d.LatestSha = null;
+                    WriteLog($"Could not check {d.Name}: {ex.Message}");
+                }
             }
             RefreshVersions();
         }
@@ -264,7 +290,9 @@ internal sealed class MainForm : Form
         try
         {
             var sha = d.LatestSha;
-            var archiveUrl = $"https://api.github.com/repos/{d.Owner}/{d.Repo}/zipball/{sha}";
+            var archiveUrl = d.IsGitLab
+                ? $"https://gitlab.com/api/v4/projects/88311107/repository/archive.zip?sha={Uri.EscapeDataString(sha!)}"
+                : $"https://api.github.com/repos/{d.Owner}/{d.Repo}/zipball/{sha}";
             stage = Path.Combine(AppPaths.Data, "stage-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(stage);
             string zipPath = Path.Combine(stage, "download.zip");
@@ -302,7 +330,7 @@ internal sealed class MainForm : Form
                     entry.ExtractToFile(target, overwrite: false);
                 }
             }
-            var required = d.Name == "ns2jb" ? "run.cjs" : "ouncecake.cjs";
+            var required = d.Name.StartsWith("ns2jb", StringComparison.Ordinal) ? "run.cjs" : "ouncecake.cjs";
             if (!File.Exists(Path.Combine(extracted, required))) throw new IOException($"Downloaded source lacks {required}.");
             var targetDir = d.Root; var rollback = targetDir + ".previous";
             Directory.CreateDirectory(Path.GetDirectoryName(targetDir)!);
