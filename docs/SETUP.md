@@ -22,7 +22,7 @@ Run `NS2Manager.exe` after the build completes. The application stores its setti
 
 ## 2. Install the host dependencies
 
-NS2 Manager manages three dependency entries: **ns2jb** (the standard host), **ns2jb-wifi** (the Wi-Fi fork at [GitLab](https://gitlab.com/nyathea/ns2jb-wifi)), and **OunceCake** (the title browser and file server). The two ns2jb versions are installed in separate directories and have independent update checks.
+NS2 Manager manages five dependency entries: **ns2jb** (the standard host), **ns2jb-wifi** (the Wi-Fi fork at [GitLab](https://gitlab.com/nyathea/ns2jb-wifi)), and **OunceCake** (the title browser and file server). The ns2jb variants and kaiHEN are installed in separate directories and have independent update checks.
 
 Install Node.js 22 or newer. For the Windows runner, Node must be available in Windows PATH. For the WSL runner, Node must be available inside the default Linux distribution; a Windows-only Node installation does not satisfy this requirement.
 
@@ -32,6 +32,7 @@ In the application's dependency list:
 2. Select **ns2jb** and click **Install selected update**. Review the confirmation before proceeding.
 3. Optionally select **ns2jb-wifi** and install it using the same update controls. Its version and download come from GitLab.
 4. Select **OunceCake** and install its update the same way.
+5. For homebrew mode, install **ns2jb-kaihen** and **kaiHEN** separately.
 
 Dependencies are stored separately under `%LOCALAPPDATA%\NS2Manager\tools`. An update does not run unless you approve it. Do not update either dependency during an active connection.
 
@@ -76,7 +77,17 @@ The example IP is not a default setting. Use the address shown in your own host 
 
 ns2jb works through four stages: checking the console, acquiring FS memory, starting the native helper, and running its FS check. Keep the host process and SmileBASIC open until the work is finished. **List games (OunceCake)** becomes available only after `4/4 verified` and a held RPC session are confirmed.
 
-## 5. Find a game and start OunceCake
+## 5. Launch kaiHEN (independent homebrew mode)
+
+The kaiHEN-capable ns2jb host is an additional dependency, not a replacement for either existing ns2jb host. Install **ns2jb-kaihen** from the kurumuz GitLab repository and **kaiHEN** from the official ouncebrew GitHub release using the manager's opt-in update controls.
+
+Set the PC LAN IP, select Windows or WSL, and click **Start kaiHEN**. The manager launches `hen.cjs` with `--dir` pointing to the installed kaiHEN payload. Follow the host output and use the matching SmileBASIC bootstrap; the old standard ns2jb commands may not match. Wait for the explicit `HEN launch completed!` message. Close SmileBASIC normally and hold R while opening a native Switch 2 game. It may take a second launch for the homebrew menu to appear.
+
+This mode does **not** retain the RPC channel needed by OunceCake, so game listing and backups are disabled while kaiHEN runs. Stop the host before changing back to an OunceCake-capable session.
+
+**Safety:** kaiHEN is experimental and homebrew may have access to console NAND. Use only trusted builds. A failed FS acquisition does not imply a successful launch or a GUI problem.
+
+## 6. Find a game and start OunceCake
 
 Click **List games (OunceCake)**. The manager starts OunceCake without asking for a title ID and displays the discovered games in a table.
 
@@ -86,7 +97,7 @@ When the log prints `Serving on http://IP:8080/`, OunceCake is ready. The IP add
 
 To change games, use the game table or start discovery again. OunceCake serves one game at a time.
 
-## 6. Back up exposed files
+## 7. Back up exposed files
 
 Click **Backup** in the row for the game you want. Choose an empty destination folder. The manager mounts that game if necessary and downloads the available files over HTTP/WebDAV. The separate **Backup title files** button downloads whichever game is currently mounted.
 
@@ -94,7 +105,7 @@ A completed backup contains the files exposed by OunceCake and `ns2manager-backu
 
 These files are extracted RomFS/ExeFS content. They are not an NSP, XCI, or savedata backup.
 
-## 7. Stop a session
+## 8. Stop a session
 
 **Stop OunceCake** becomes clickable only when OunceCake is running. It stops the OunceCake process and leaves ns2jb running.
 
