@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Added independent kaiHEN-capable ns2jb host and official kaiHEN release dependencies with opt-in updates and rollback.
+- Added Start kaiHEN for Windows and WSL with native homebrew launch completion logging and isolation from the OunceCake RPC workflow.
+- Updated README, setup guide, and attribution for kaiHEN support.
 - Fix OunceCake launch after adding the Wi-Fi host dependency: locate OunceCake by name instead of the now-obsolete dependency index.
 - Decode redirected ns2jb, Wi-Fi, WSL, RPC, and OunceCake output using UTF-8 so non-ASCII game names display correctly; send OunceCake input as BOM-free UTF-8.
 - Use the supplied Switch 2 icon for the Windows executable and application window.
