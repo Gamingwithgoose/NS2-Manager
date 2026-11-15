@@ -14,7 +14,8 @@ When redistributing NS2 Manager or a modified version, preserve applicable copyr
 NS2 Manager downloads and launches the following separate projects. They retain their own copyrights and license terms; this notice does not change or relicense their code.
 
 - ns2jb by Cellenseres: https://github.com/Cellenseres/ns2jb
-- Original ns2jb project by kurumuz: https://gitlab.com/kurumuz/ns2jb
+- Original ns2jb project and kaiHEN host by kurumuz: https://gitlab.com/kurumuz/ns2jb
+- kaiHEN by ouncebrew contributors, GPL-2.0-only: https://github.com/ouncebrew/kaihen
 - OunceCake by ariankordi, GPL v2: https://github.com/ariankordi/OunceCake
 - OunceCake fork by Cellenseres, GPL v2: https://github.com/Cellenseres/OunceCake
 
