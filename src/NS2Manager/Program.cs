@@ -32,6 +32,8 @@ internal sealed class Dependency
     public required string Owner { get; init; }
     public required string Repo { get; init; }
     public bool IsGitLab { get; init; }
+    public bool IsKaiHenRelease { get; init; }
+    public int GitLabProjectId { get; init; }
     public string? InstalledSha { get; set; }
     public string? LatestSha { get; set; }
     public string Root => Path.Combine(AppPaths.Data, "tools", Name);
@@ -51,7 +53,9 @@ internal sealed class MainForm : Form
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(5) };
     private readonly Dependency[] deps = [
         new() { Name = "ns2jb", Owner = "Cellenseres", Repo = "ns2jb" },
-        new() { Name = "ns2jb-wifi", Owner = "nyathea", Repo = "ns2jb-wifi", IsGitLab = true },
+        new() { Name = "ns2jb-wifi", Owner = "nyathea", Repo = "ns2jb-wifi", IsGitLab = true, GitLabProjectId = 88311107 },
+        new() { Name = "ns2jb-kaihen", Owner = "kurumuz", Repo = "ns2jb", IsGitLab = true, GitLabProjectId = 88021393 },
+        new() { Name = "kaiHEN", Owner = "ouncebrew", Repo = "kaihen", IsKaiHenRelease = true },
         new() { Name = "OunceCake", Owner = "ariankordi", Repo = "OunceCake" }
     ];
     private readonly TextBox host = new() { Width = 150 };
@@ -59,11 +63,12 @@ internal sealed class MainForm : Form
     private readonly TextBox run = new() { Width = 525 };
     private readonly ComboBox runnerMode = new() { Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Font = new("Consolas", 9.5f) };
-    private readonly ListBox versions = new() { Width = 620, Height = 90 };
+    private readonly ListBox versions = new() { Width = 620, Height = 115 };
     private readonly Button check = new() { Text = "Check for updates", AutoSize = true };
     private readonly Button install = new() { Text = "Install selected update", AutoSize = true };
     private readonly Button start = new() { Text = "Start ns2jb", AutoSize = true };
     private readonly Button startWifi = new() { Text = "Start ns2jb-WiFi", AutoSize = true };
+    private readonly Button startKaiHen = new() { Text = "Start kaiHEN", AutoSize = true };
     private readonly Button cake = new() { Text = "List games (OunceCake)", AutoSize = true, Enabled = false };
     private readonly Button chooseGame = new() { Text = "Open selected game", AutoSize = true, Enabled = false };
     private readonly DataGridView games = new()
@@ -127,19 +132,21 @@ internal sealed class MainForm : Form
             new Label { Text = "Runner:", AutoSize = true, Padding = new Padding(10, 7, 0, 0) }, runnerMode]);
         page.Controls.Add(network, 0, 0);
 
-        var updates = new GroupBox { Text = "Dependencies / Updates (manual approval only)", Height = 170, Dock = DockStyle.Top };
+        var updates = new GroupBox { Text = "Dependencies / Updates (manual approval only)", Height = 195, Dock = DockStyle.Top };
         var depPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(8), AutoScroll = true };
         var depButtons = new FlowLayoutPanel { Width = 760, Height = 40 };
         depButtons.Controls.AddRange([check, install]);
         depPanel.Controls.Add(versions); depPanel.Controls.Add(depButtons); updates.Controls.Add(depPanel);
         page.Controls.Add(updates, 0, 1);
 
-        var session = new GroupBox { Text = "Exploit host and content server", Height = 350, Dock = DockStyle.Top };
+        var session = new GroupBox { Text = "Exploit host and content server", Height = 385, Dock = DockStyle.Top };
         var sessionPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(8) };
         var runRow = new FlowLayoutPanel { Width = 790, Height = 37 };
         runRow.Controls.AddRange([new Label { Text = "Run:", Width = 38, Padding = new Padding(0, 7, 0, 0) }, run, findRun]);
         var actions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
-        actions.Controls.AddRange([start, startWifi, cake, chooseGame]);
+        actions.Controls.AddRange([start, startWifi, startKaiHen]);
+        var titleActions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
+        titleActions.Controls.AddRange([cake, chooseGame]);
         var transferActions = new FlowLayoutPanel { Width = 790, Height = 37, WrapContents = false };
         transferActions.Controls.AddRange([backup, cancelBackup, stopCake, stop, status]);
         games.Columns.Add(new DataGridViewTextBoxColumn { Name = "Game", HeaderText = "Installed game", FillWeight = 65 });
@@ -150,7 +157,7 @@ internal sealed class MainForm : Form
             if (e.RowIndex >= 0 && e.ColumnIndex == games.Columns["GameBackup"]!.Index)
                 await BackupGameAsync(e.RowIndex);
         };
-        sessionPanel.Controls.AddRange([runRow, actions, transferActions, games]); session.Controls.Add(sessionPanel);
+        sessionPanel.Controls.AddRange([runRow, actions, titleActions, transferActions, games]); session.Controls.Add(sessionPanel);
         page.Controls.Add(session, 0, 2);
 
         var logs = new GroupBox { Text = "Live output", Dock = DockStyle.Fill, Padding = new Padding(8) };
@@ -161,7 +168,8 @@ internal sealed class MainForm : Form
         check.Click += async (_, _) => await CheckUpdatesAsync();
         install.Click += async (_, _) => await InstallSelectedAsync();
         start.Click += async (_, _) => await StartHostAsync(deps[0]);
-        startWifi.Click += async (_, _) => await StartHostAsync(deps[1]);
+        startWifi.Click += async (_, _) => await StartHostAsync(deps.Single(d => d.Name == "ns2jb-wifi"));
+        startKaiHen.Click += async (_, _) => await StartKaiHenAsync();
         cake.Click += async (_, _) =>
         {
             if (ounceProcess != null && !ounceProcess.HasExited)
@@ -197,6 +205,7 @@ internal sealed class MainForm : Form
         bool canStart = !hostStarting && (hostProcess == null || hostProcess.HasExited);
         start.Enabled = canStart;
         startWifi.Enabled = canStart;
+        startKaiHen.Enabled = canStart;
     }
 
     private void RefreshCakeAvailability()
@@ -246,7 +255,7 @@ internal sealed class MainForm : Form
                     if (d.IsGitLab)
                     {
                         // GitLab project 88311107 is nyathea/ns2jb-wifi.
-                        const string projectApi = "https://gitlab.com/api/v4/projects/88311107";
+                        var projectApi = $"https://gitlab.com/api/v4/projects/{d.GitLabProjectId}";
                         using var projectResponse = await http.GetAsync(projectApi);
                         projectResponse.EnsureSuccessStatusCode();
                         using var project = JsonDocument.Parse(await projectResponse.Content.ReadAsStringAsync());
@@ -257,6 +266,13 @@ internal sealed class MainForm : Form
                         branchResponse.EnsureSuccessStatusCode();
                         using var branchDoc = JsonDocument.Parse(await branchResponse.Content.ReadAsStringAsync());
                         d.LatestSha = branchDoc.RootElement.GetProperty("commit").GetProperty("id").GetString();
+                    }
+                    else if (d.IsKaiHenRelease)
+                    {
+                        using var response = await http.GetAsync("https://api.github.com/repos/ouncebrew/kaihen/releases/latest");
+                        response.EnsureSuccessStatusCode();
+                        using var release = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                        d.LatestSha = release.RootElement.GetProperty("tag_name").GetString();
                     }
                     else
                     {
@@ -292,9 +308,21 @@ internal sealed class MainForm : Form
         try
         {
             var sha = d.LatestSha;
-            var archiveUrl = d.IsGitLab
-                ? $"https://gitlab.com/api/v4/projects/88311107/repository/archive.zip?sha={Uri.EscapeDataString(sha!)}"
-                : $"https://api.github.com/repos/{d.Owner}/{d.Repo}/zipball/{sha}";
+            string archiveUrl;
+            if (d.IsKaiHenRelease)
+            {
+                using var response = await http.GetAsync("https://api.github.com/repos/ouncebrew/kaihen/releases/tags/" + Uri.EscapeDataString(sha!));
+                response.EnsureSuccessStatusCode();
+                using var release = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                archiveUrl = release.RootElement.GetProperty("assets").EnumerateArray()
+                    .Where(a => string.Equals(a.GetProperty("name").GetString(), "kaiHEN.zip", StringComparison.OrdinalIgnoreCase))
+                    .Select(a => a.GetProperty("browser_download_url").GetString())
+                    .FirstOrDefault() ?? throw new IOException("Official kaiHEN.zip release asset not found.");
+            }
+            else if (d.IsGitLab)
+                archiveUrl = $"https://gitlab.com/api/v4/projects/{d.GitLabProjectId}/repository/archive.zip?sha={Uri.EscapeDataString(sha!)}";
+            else
+                archiveUrl = $"https://api.github.com/repos/{d.Owner}/{d.Repo}/zipball/{sha}";
             stage = Path.Combine(AppPaths.Data, "stage-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(stage);
             string zipPath = Path.Combine(stage, "download.zip");
@@ -317,8 +345,8 @@ internal sealed class MainForm : Form
                     if (expanded > 600L * 1024 * 1024) throw new IOException("Expanded archive is too large.");
                     var path = entry.FullName.Replace('\\', '/');
                     var split = path.IndexOf('/');
-                    if (split < 0) continue;
-                    var relative = path[(split + 1)..];
+                    if (!d.IsKaiHenRelease && split < 0) continue;
+                    var relative = d.IsKaiHenRelease ? path : path[(split + 1)..];
                     if (string.IsNullOrEmpty(relative)) continue;
                     if (relative.StartsWith('/') || relative.Split('/').Any(x => x == ".." || x == "."))
                         throw new IOException("Unsafe archive path.");
@@ -332,8 +360,12 @@ internal sealed class MainForm : Form
                     entry.ExtractToFile(target, overwrite: false);
                 }
             }
-            var required = d.Name.StartsWith("ns2jb", StringComparison.Ordinal) ? "run.cjs" : "ouncecake.cjs";
-            if (!File.Exists(Path.Combine(extracted, required))) throw new IOException($"Downloaded source lacks {required}.");
+            var required = d.IsKaiHenRelease ? "bootstrap.bin" :
+                d.Name == "ns2jb-kaihen" ? "hen.cjs" :
+                d.Name.StartsWith("ns2jb", StringComparison.Ordinal) ? "run.cjs" : "ouncecake.cjs";
+            if (!File.Exists(Path.Combine(extracted, required))) throw new IOException($"Downloaded archive lacks {required}.");
+            if (d.IsKaiHenRelease && !File.Exists(Path.Combine(extracted, "hbmenu.nro")))
+                throw new IOException("kaiHEN archive is missing hbmenu.nro.");
             var targetDir = d.Root; var rollback = targetDir + ".previous";
             Directory.CreateDirectory(Path.GetDirectoryName(targetDir)!);
             if (Directory.Exists(rollback)) Directory.Delete(rollback, true);
@@ -519,6 +551,69 @@ internal sealed class MainForm : Form
             RefreshHostButtons();
         }
     }
+    private async Task StartKaiHenAsync()
+    {
+        if (hostStarting || (hostProcess != null && !hostProcess.HasExited))
+        {
+            WriteLog("Stop the current ns2jb host before launching kaiHEN.");
+            return;
+        }
+        hostStarting = true;
+        RefreshHostButtons();
+        try
+        {
+            hostVerified = false;
+            activeRunDirectory = null;
+            activeHostDependency = null;
+            RefreshCakeAvailability();
+            SaveSettings();
+            var backend = deps.Single(d => d.Name == "ns2jb-kaihen");
+            var payload = deps.Single(d => d.Name == "kaiHEN");
+            if (!File.Exists(Path.Combine(backend.Root, "hen.cjs")))
+                throw new FileNotFoundException("Install ns2jb-kaihen under Dependencies first.");
+            if (!File.Exists(Path.Combine(payload.Root, "bootstrap.bin")) ||
+                !File.Exists(Path.Combine(payload.Root, "hbmenu.nro")))
+                throw new FileNotFoundException("Install the official kaiHEN release first.");
+            var pc = ValidateIp(host.Text);
+            activeHostDependency = backend;
+            if (runnerMode.SelectedItem?.ToString() == "WSL")
+            {
+                async Task<string> WslPath(string path)
+                {
+                    var p = new ProcessStartInfo("wsl.exe") { UseShellExecute = false, CreateNoWindow = true,
+                        RedirectStandardOutput = true, RedirectStandardError = true,
+                        StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
+                    p.ArgumentList.Add("--"); p.ArgumentList.Add("wslpath"); p.ArgumentList.Add("-a"); p.ArgumentList.Add(path);
+                    using var process = Process.Start(p) ?? throw new IOException("Could not launch wslpath.");
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    var errors = await process.StandardError.ReadToEndAsync();
+                    await process.WaitForExitAsync();
+                    if (process.ExitCode != 0) throw new IOException("WSL path conversion failed: " + errors);
+                    return output.Trim();
+                }
+                static string Quote(string x) => "'" + x.Replace("'", "'\\''") + "'";
+                var backendPath = await WslPath(backend.Root);
+                var payloadPath = await WslPath(payload.Root);
+                const string init = "if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\"; fi; ";
+                hostProcess = await StartProcessAsync("wsl.exe", ["--", "bash", "-lc",
+                    init + "cd " + Quote(backendPath) + " && exec node hen.cjs --dir " + Quote(payloadPath) + " " + pc], backend.Root);
+                WriteLog("kaiHEN launcher started through WSL.");
+            }
+            else
+            {
+                hostProcess = await StartProcessAsync("node", ["hen.cjs", "--dir", payload.Root, pc], backend.Root);
+                WriteLog("kaiHEN launcher started using Windows Node.");
+            }
+            WriteLog("Follow the matching SmileBASIC bootstrap instructions. Wait for HEN launch completed! OunceCake requires a separate RPC session.");
+        }
+        catch (Exception ex)
+        {
+            if (hostProcess == null || hostProcess.HasExited) activeHostDependency = null;
+            WriteLog("Cannot start kaiHEN: " + ex.Message);
+        }
+        finally { hostStarting = false; RefreshHostButtons(); }
+    }
+
     private async Task StartCakeAsync(string? requestedTitle = null)
     {
         try
@@ -718,6 +813,8 @@ internal sealed class MainForm : Form
         {
             if (e.Data == null) return;
             WriteLog(e.Data);
+            if (e.Data.Contains("HEN launch completed!", StringComparison.OrdinalIgnoreCase))
+                WriteLog("kaiHEN reports success. Close SmileBASIC normally and launch a native Switch 2 game while holding R.");
             if (e.Data.StartsWith("4/4 verified.", StringComparison.Ordinal) && !IsDisposed && IsHandleCreated)
                 try { BeginInvoke(() =>
                 {
