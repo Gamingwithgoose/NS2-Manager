@@ -28,7 +28,7 @@ You do not need the .NET runtime installed separately to run the published execu
 
 ## Set up ns2jb and OunceCake
 
-On the first launch, select each dependency in the list, click **Check for updates**, then **Install selected update**. The dependency list includes the standard ns2jb host (GitHub), **ns2jb-wifi** ([GitLab](https://gitlab.com/nyathea/ns2jb-wifi)), and OunceCake. Both host versions are downloaded and updated independently. Both downloads are installed under:
+On the first launch, select each dependency in the list, click **Check for updates**, then **Install selected update**. The dependency list includes the standard ns2jb host (GitHub), **ns2jb-wifi** ([GitLab](https://gitlab.com/nyathea/ns2jb-wifi)), OunceCake, **ns2jb-kaihen**, and **kaiHEN**. Each is installed and updated independently. Both downloads are installed under:
 
 ```text
 %LOCALAPPDATA%\NS2Manager\tools
@@ -49,6 +49,14 @@ Set **PC LAN IP** to the IPv4 address the Switch 2 can reach. Select **Windows**
 The **List games (OunceCake)** button remains unavailable until ns2jb reports `4/4 verified` and its held RPC session is confirmed. It is disabled again if ns2jb stops.
 
 For the full walkthrough, including the nine-argument SmileBASIC command and recovery notes, see [Setup and usage](docs/SETUP.md).
+
+## Native Switch 2 homebrew through kaiHEN
+
+NS2 Manager offers **Start kaiHEN** as a separate option. Install **ns2jb-kaihen** (the [kurumuz fork](https://gitlab.com/kurumuz/ns2jb)) and **kaiHEN** (the official [ouncebrew release](https://github.com/ouncebrew/kaihen/releases)) using **Check for updates** and **Install selected update**. Updates remain opt-in and preserve rollback directories.
+
+Choose your Windows or WSL runner and enter the PC LAN IP that the Switch 2 can reach. **Start kaiHEN** launches `hen.cjs --dir <kaiHEN directory> <PC LAN IP>`. Use the matching SmileBASIC bootstrap and the console instructions printed by that backend. Wait for `HEN launch completed!` before closing SmileBASIC. Then hold R while launching a **native Switch 2 game**; the first launch might only register the game's launch policy.
+
+The kaiHEN workflow does not create OunceCake's retained RPC session. OunceCake discovery/backup remains unavailable in this mode; stop the active host before switching back to standard ns2jb or ns2jb-WiFi. This launcher does not guarantee exploit success, firmware compatibility, or console safety. kaiHEN is experimental and can expose NAND-level access to homebrew. Run only software you trust.
 
 ## Browse games and back up files
 
@@ -79,7 +87,8 @@ The dependency source repositories are maintained separately. Their respective l
 - [ns2jb (Cellenseres)](https://github.com/Cellenseres/ns2jb)
 - [ns2jb-wifi (nyathea)](https://gitlab.com/nyathea/ns2jb-wifi)
 - [OunceCake (ariankordi)](https://github.com/ariankordi/OunceCake)
-- [Original ns2jb project](https://gitlab.com/kurumuz/ns2jb)
+- [kaiHEN-capable ns2jb (kurumuz)](https://gitlab.com/kurumuz/ns2jb)
+- [kaiHEN (ouncebrew)](https://github.com/ouncebrew/kaihen)
 
 ## License
 
