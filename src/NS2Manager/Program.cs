@@ -315,9 +315,9 @@ internal sealed class MainForm : Form
                 response.EnsureSuccessStatusCode();
                 using var release = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                 archiveUrl = release.RootElement.GetProperty("assets").EnumerateArray()
-                    .Where(a => string.Equals(a.GetProperty("name").GetString(), "kaiHEN.zip", StringComparison.OrdinalIgnoreCase))
+                    .Where(a => Regex.IsMatch(a.GetProperty("name").GetString() ?? "", @"^kaiHEN(?:-[A-Za-z0-9._-]+)?\.zip$", RegexOptions.IgnoreCase))
                     .Select(a => a.GetProperty("browser_download_url").GetString())
-                    .FirstOrDefault() ?? throw new IOException("Official kaiHEN.zip release asset not found.");
+                    .FirstOrDefault() ?? throw new IOException("Official versioned kaiHEN ZIP release asset not found.");
             }
             else if (d.IsGitLab)
                 archiveUrl = $"https://gitlab.com/api/v4/projects/{d.GitLabProjectId}/repository/archive.zip?sha={Uri.EscapeDataString(sha!)}";
