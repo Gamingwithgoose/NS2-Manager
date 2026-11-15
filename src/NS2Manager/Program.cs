@@ -578,20 +578,27 @@ internal sealed class MainForm : Form
             activeHostDependency = backend;
             if (runnerMode.SelectedItem?.ToString() == "WSL")
             {
+                // wsl.exe forwards arguments through Linux parsing; quote the entire Windows
+                // path inside bash so backslashes survive instead of being swallowed.
+                static string Quote(string x) => "'" + x.Replace("'", "'\\''") + "'";
                 async Task<string> WslPath(string path)
                 {
                     var p = new ProcessStartInfo("wsl.exe") { UseShellExecute = false, CreateNoWindow = true,
                         RedirectStandardOutput = true, RedirectStandardError = true,
                         StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
-                    p.ArgumentList.Add("--"); p.ArgumentList.Add("wslpath"); p.ArgumentList.Add("-a"); p.ArgumentList.Add(path);
+                    p.ArgumentList.Add("--");
+                    p.ArgumentList.Add("bash");
+                    p.ArgumentList.Add("-lc");
+                    p.ArgumentList.Add("wslpath -a " + Quote(Path.GetFullPath(path)));
                     using var process = Process.Start(p) ?? throw new IOException("Could not launch wslpath.");
                     var output = await process.StandardOutput.ReadToEndAsync();
                     var errors = await process.StandardError.ReadToEndAsync();
                     await process.WaitForExitAsync();
                     if (process.ExitCode != 0) throw new IOException("WSL path conversion failed: " + errors);
-                    return output.Trim();
+                    var converted = output.Trim();
+                    if (!converted.StartsWith('/')) throw new IOException("Unexpected WSL path: " + converted);
+                    return converted;
                 }
-                static string Quote(string x) => "'" + x.Replace("'", "'\\''") + "'";
                 var backendPath = await WslPath(backend.Root);
                 var payloadPath = await WslPath(payload.Root);
                 const string init = "if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\"; fi; ";
