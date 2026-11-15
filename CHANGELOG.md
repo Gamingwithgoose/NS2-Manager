@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Fixed kaiHEN dependency installation to recognize official versioned release archives such as `kaiHEN-20261114d.zip`.
 - Added independent kaiHEN-capable ns2jb host and official kaiHEN release dependencies with opt-in updates and rollback.
 - Added Start kaiHEN for Windows and WSL with native homebrew launch completion logging and isolation from the OunceCake RPC workflow.
 - Updated README, setup guide, and attribution for kaiHEN support.
